@@ -57,6 +57,13 @@ const configExample = JSON.stringify(
   <header class="hero">
     <div class="container">
       <span class="hero-badge">Experimental</span>
+      <img
+        src="/apfelclaw.png"
+        alt="apfelclaw logo"
+        class="hero-logo"
+        width="140"
+        height="140"
+      />
       <h1>apfelclaw</h1>
       <p class="hero-sub">
         A locally running AI agent for macOS tasks, powered by Apple's
@@ -436,6 +443,14 @@ const configExample = JSON.stringify(
     padding: 0.3em 0.9em;
     border-radius: 999px;
     margin-bottom: 1.25rem;
+  }
+
+  .hero-logo {
+    display: block;
+    margin: 0 auto;
+    width: 140px;
+    height: 140px;
+    object-fit: contain;
   }
 
   .hero h1 {
