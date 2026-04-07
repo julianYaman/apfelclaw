@@ -83,6 +83,7 @@ Remote control providers store their own state separately in `~/.apfelclaw/remot
 
 ## What's next
 
+- Try [Starter Prompts](https://bearprompt.com/prompts/apfelclaw) for a few ready-made ways to start using apfelclaw
 - Browse the [API Reference](/docs/api) for endpoint details
 - See [Connections](/docs/connections) for remote access options like Telegram
 - See available [Tools](/docs/tools) and what the agent can do
