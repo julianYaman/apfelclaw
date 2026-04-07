@@ -12,14 +12,18 @@ public struct ToolPolicy: Sendable {
         self.approvalMode = approvalMode
     }
 
-    public func requiresPrompt(for toolName: String) -> Bool {
+    public func requiresPrompt(for tool: ToolDefinition, priorApprovalExists: Bool) -> Bool {
+        if tool.requiresConfirmation {
+            return true
+        }
+
         switch approvalMode {
         case .always:
             return true
         case .askOncePerToolPerSession:
-            return true
+            return priorApprovalExists == false
         case .trustedReadonly:
-            return false
+            return tool.readonly == false
         }
     }
 }

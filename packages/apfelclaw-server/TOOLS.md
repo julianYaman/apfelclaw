@@ -12,28 +12,28 @@ Current tools:
 - Use when: The user needs to locate files by name or search phrase.
 - Avoid when: The user already has an exact absolute path.
 - Read-only: yes
-- Confirmation required: yes
+- Confirmation required: no
 - Parameters:
   - `query` string, required
   - `limit` integer, optional
 
 ## `get_file_info`
 
-- Purpose: Get metadata for an exact file or directory path.
-- Use when: The user already provided the exact path.
+- Purpose: Get metadata for one exact file or directory path, including paths that start with `~/`.
+- Use when: The user already provided one exact path.
 - Avoid when: The user needs to search for the path first.
 - Read-only: yes
-- Confirmation required: yes
+- Confirmation required: no
 - Parameters:
   - `path` string, required
 
 ## `list_calendar_events`
 
-- Purpose: Read upcoming events from the user's calendars.
-- Use when: The user asks about meetings or schedule items for today, tomorrow, or next week.
+- Purpose: Read upcoming events from the user's calendars for a requested time range.
+- Use when: The user asks about meetings or schedule items for a natural-language time range.
 - Avoid when: The user wants to create or edit events.
 - Read-only: yes
-- Confirmation required: yes
+- Confirmation required: no
 - Parameters:
   - `timeframe` string, required
   - `limit` integer, optional
@@ -44,10 +44,10 @@ Current tools:
 - Use when: A single allowlisted read-only shell command directly answers the question.
 - Avoid when: The task needs shell syntax, write access, or unsupported commands.
 - Read-only: yes
-- Confirmation required: yes
+- Confirmation required: no
 - Parameters:
   - `command` string, required
-  - `arguments` array, optional
+  - `arguments` array, optional, subject to command-specific safe argument rules
 
 Safe command allowlist:
 
@@ -68,6 +68,6 @@ Safe command allowlist:
 - Use when: The user asks for latest or recent emails.
 - Avoid when: The user asks for specific mail search, message bodies, or mail actions.
 - Read-only: yes
-- Confirmation required: yes
+- Confirmation required: no
 - Parameters:
   - `limit` integer, optional

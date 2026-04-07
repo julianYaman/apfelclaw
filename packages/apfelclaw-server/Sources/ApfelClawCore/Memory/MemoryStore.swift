@@ -226,6 +226,22 @@ public final class MemoryStore: @unchecked Sendable {
         )
     }
 
+    public func hasApprovedToolCall(sessionID: Int64, toolName: String) throws -> Bool {
+        let sql = """
+        SELECT 1
+        FROM tool_calls
+        WHERE session_id = ? AND tool_name = ? AND approved = 1
+        LIMIT 1;
+        """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_int64(statement, 1, sessionID)
+        sqlite3_bind_text(statement, 2, toolName, -1, transientDestructor)
+
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+
     public func remoteSessionID(provider: String, remoteID: String) throws -> Int64? {
         let sql = """
         SELECT session_id

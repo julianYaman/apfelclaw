@@ -11,7 +11,7 @@
       ],
       "returns": "A short list of matching file paths and metadata.",
       "readonly": true,
-      "requires_confirmation": true,
+      "requires_confirmation": false,
       "result_format": "file_search",
       "parameters": {
         "type": "object",
@@ -32,8 +32,8 @@
     },
     {
       "name": "get_file_info",
-      "description": "Get metadata for an exact file or directory path.",
-      "use_when": "The user provides an exact path and wants details like size, type, timestamps, or whether it exists.",
+      "description": "Get metadata for one exact file or directory path, including paths that start with ~/.",
+      "use_when": "The user provides one exact path and wants details like size, type, timestamps, or whether it exists.",
       "avoid_when": "The user does not know the path yet and needs a search first.",
       "examples": [
         "Show info for /Applications/Mail.app",
@@ -41,14 +41,14 @@
       ],
       "returns": "Structured metadata for one exact file system path.",
       "readonly": true,
-      "requires_confirmation": true,
+      "requires_confirmation": false,
       "result_format": "file_info",
       "parameters": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "The exact absolute path to inspect."
+            "description": "The exact path to inspect. Prefer an absolute path. Paths starting with ~/ are also supported."
           }
         },
         "required": [
@@ -58,9 +58,9 @@
     },
     {
       "name": "list_calendar_events",
-      "description": "Read upcoming events from the user's calendars. Use timeframe values today, tomorrow, or next_7_days.",
-      "use_when": "The user asks about calendar events, meetings, appointments, or schedule items for today, tomorrow, or the next week.",
-      "avoid_when": "The user asks to create, edit, or delete events, or asks for dates outside the supported timeframe values.",
+      "description": "Read upcoming events from the user's calendars for a requested time range.",
+      "use_when": "The user asks about calendar events, meetings, appointments, or schedule items for a natural-language time range.",
+      "avoid_when": "The user asks to create, edit, or delete events.",
       "examples": [
         "Please show me my calendar events for today",
         "What meetings do I have today?",
@@ -68,14 +68,14 @@
       ],
       "returns": "Upcoming calendar events for the requested timeframe.",
       "readonly": true,
-      "requires_confirmation": true,
+      "requires_confirmation": false,
       "result_format": "calendar_events",
       "parameters": {
         "type": "object",
         "properties": {
           "timeframe": {
             "type": "string",
-            "description": "Calendar range. Use exactly one of today, tomorrow, or next_7_days."
+            "description": "Calendar range as natural language, for example today, tomorrow, next week, April 12, or 2026-04-12."
           },
           "limit": {
             "type": "integer",
@@ -98,7 +98,7 @@
       ],
       "returns": "Plain command output from one allowlisted read-only command.",
       "readonly": true,
-      "requires_confirmation": true,
+      "requires_confirmation": false,
       "result_format": "command_output",
       "parameters": {
         "type": "object",
@@ -109,7 +109,7 @@
           },
           "arguments": {
             "type": "array",
-            "description": "Optional command arguments as plain strings. Never use shell syntax, pipes, redirects, or semicolons."
+            "description": "Optional plain string arguments. Each command has its own safe argument rules. Never use shell syntax, pipes, redirects, or semicolons."
           }
         },
         "required": [
@@ -129,7 +129,7 @@
       ],
       "returns": "Recent inbox messages with subject, sender, received date, and mailbox name.",
       "readonly": true,
-      "requires_confirmation": true,
+      "requires_confirmation": false,
       "result_format": "recent_mail",
       "parameters": {
         "type": "object",

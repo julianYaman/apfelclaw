@@ -116,7 +116,7 @@ public final class ToolRuntime: @unchecked Sendable {
         guard let module = registry.module(named: toolCall.name) else {
             throw AppError.message("Unsupported tool requested: \(toolCall.name)")
         }
-        let arguments = parseArguments(module.normalizeArguments(toolCall.argumentsJSON, userInput: userInput, context: context))
+        let arguments = try module.validatedArguments(from: toolCall.argumentsJSON)
         return try await module.execute(arguments: arguments, userInput: userInput, context: context)
     }
 
@@ -140,21 +140,87 @@ public final class ToolRuntime: @unchecked Sendable {
         )
     }
 
-    private func parseArguments(_ json: String) -> [String: JSONValue] {
-        let data = Data(json.utf8)
-        return (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
-    }
 }
 
 private enum ToolModuleSupport {
     static func decodeObject(_ result: String) -> [String: JSONValue]? {
-        let data = Data(result.utf8)
-        return try? JSONDecoder().decode([String: JSONValue].self, from: data)
+        try? decodeArgumentObject(result)
     }
 
     static func encode(_ object: [String: JSONValue]) throws -> String {
         let data = try JSONEncoder().encode(object)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    static func decodeArgumentObject(_ rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        let data = Data(rawArgumentsJSON.utf8)
+        do {
+            return try JSONDecoder().decode([String: JSONValue].self, from: data)
+        } catch {
+            throw AppError.message("Tool arguments must be a valid JSON object.")
+        }
+    }
+
+    static func validateKeys(
+        _ arguments: [String: JSONValue],
+        allowed: Set<String>,
+        toolName: String,
+        aliasHints: [String: String] = [:]
+    ) throws {
+        let unsupported = Set(arguments.keys).subtracting(allowed)
+        guard unsupported.isEmpty else {
+            let renderedUnsupported = unsupported.sorted().joined(separator: ", ")
+
+            let hints = unsupported
+                .sorted()
+                .compactMap { key in
+                    aliasHints[key].map { "Use '\($0)' instead of '\(key)'." }
+                }
+                .joined(separator: " ")
+
+            let suffix = hints.isEmpty ? "" : " \(hints)"
+            throw AppError.message("Tool '\(toolName)' received unsupported argument(s): \(renderedUnsupported).\(suffix)")
+        }
+    }
+
+    static func remapAliases(
+        _ arguments: [String: JSONValue],
+        aliases: [String: String],
+        toolName: String
+    ) throws -> [String: JSONValue] {
+        guard aliases.isEmpty == false else {
+            return arguments
+        }
+
+        var remapped = arguments
+        for (alias, canonical) in aliases {
+            guard let aliasValue = remapped.removeValue(forKey: alias) else {
+                continue
+            }
+
+            if remapped[canonical] != nil {
+                throw AppError.message(
+                    "Tool '\(toolName)' received both '\(canonical)' and its alias '\(alias)'. Use only '\(canonical)'."
+                )
+            }
+
+            remapped[canonical] = aliasValue
+        }
+
+        return remapped
+    }
+
+    static func validatedArguments(
+        from rawArgumentsJSON: String,
+        allowed: Set<String>,
+        toolName: String,
+        aliases: [String: String] = [:],
+        aliasHints: [String: String] = [:]
+    ) throws -> [String: JSONValue] {
+        let arguments = try decodeArgumentObject(rawArgumentsJSON)
+        let remappedArguments = try remapAliases(arguments, aliases: aliases, toolName: toolName)
+        try validateKeys(remappedArguments, allowed: allowed, toolName: toolName, aliasHints: aliasHints)
+        return remappedArguments
     }
 
     static func requireString(_ value: JSONValue?, key: String) throws -> String {
@@ -164,6 +230,31 @@ private enum ToolModuleSupport {
         return string
     }
 
+    static func optionalInt(_ value: JSONValue?, key: String) throws -> Int? {
+        guard let value else {
+            return nil
+        }
+        guard let intValue = value.intValue else {
+            throw AppError.message("Tool argument '\(key)' must be an integer.")
+        }
+        return intValue
+    }
+
+    static func stringArray(_ value: JSONValue?, key: String) throws -> [String] {
+        guard let value else {
+            return []
+        }
+        guard let array = value.arrayValue else {
+            throw AppError.message("Tool argument '\(key)' must be an array of strings.")
+        }
+
+        let strings = array.compactMap(\.stringValue)
+        guard strings.count == array.count else {
+            throw AppError.message("Tool argument '\(key)' must contain only strings.")
+        }
+        return strings
+    }
+
     static func clampLimit(_ value: Int?, fallback: Int, upperBound: Int) -> Int {
         guard let value else {
             return fallback
@@ -171,42 +262,9 @@ private enum ToolModuleSupport {
         return min(Swift.max(1, value), upperBound)
     }
 
-    static func inferCount(from userInput: String) -> Int? {
-        let input = userInput.lowercased()
-
-        if let range = input.range(of: #"\b([0-9]{1,2})\b"#, options: .regularExpression),
-           let value = Int(input[range]) {
-            return value
-        }
-
-        let wordMap: [String: Int] = [
-            "one": 1,
-            "two": 2,
-            "three": 3,
-            "four": 4,
-            "five": 5,
-            "six": 6,
-            "seven": 7,
-            "eight": 8,
-            "nine": 9,
-            "ten": 10,
-        ]
-
-        for (word, value) in wordMap where input.contains(word) {
-            return value
-        }
-
-        return nil
-    }
-
-    static func resolveLimit(arguments: [String: JSONValue], userInput: String, fallback: Int, upperBound: Int) -> Int {
-        if let explicit = arguments["limit"]?.intValue {
-            return clampLimit(explicit, fallback: fallback, upperBound: upperBound)
-        }
-        if let inferred = inferCount(from: userInput) {
-            return clampLimit(inferred, fallback: fallback, upperBound: upperBound)
-        }
-        return fallback
+    static func resolveLimit(arguments: [String: JSONValue], fallback: Int, upperBound: Int) throws -> Int {
+        let explicitLimit = try optionalInt(arguments["limit"], key: "limit")
+        return clampLimit(explicitLimit, fallback: fallback, upperBound: upperBound)
     }
 }
 
@@ -216,8 +274,8 @@ private struct FindFilesToolModule: ToolModule {
     private let fileTools = FileTools()
 
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
-        let query = try resolveQuery(arguments: arguments, userInput: userInput)
-        let limit = ToolModuleSupport.resolveLimit(arguments: arguments, userInput: userInput, fallback: 5, upperBound: 10)
+        let query = try ToolModuleSupport.requireString(arguments["query"], key: "query")
+        let limit = try ToolModuleSupport.resolveLimit(arguments: arguments, fallback: 5, upperBound: 10)
         return try fileTools.findFiles(query: query, limit: limit)
     }
 
@@ -262,37 +320,12 @@ private struct FindFilesToolModule: ToolModule {
         )
     }
 
-    func normalizeArguments(_ rawArgumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String {
-        guard let decoded = ToolModuleSupport.decodeObject(rawArgumentsJSON) else {
-            return rawArgumentsJSON
-        }
-
-        var normalized: [String: JSONValue] = [:]
-        if let query = decoded["query"]?.stringValue, query.isEmpty == false {
-            normalized["query"] = .string(query)
-        }
-        if let limit = decoded["limit"]?.intValue {
-            normalized["limit"] = .number(Double(limit))
-        }
-        return (try? ToolModuleSupport.encode(normalized)) ?? rawArgumentsJSON
-    }
-
-    private func resolveQuery(arguments: [String: JSONValue], userInput: String) throws -> String {
-        if let query = arguments["query"]?.stringValue, query.isEmpty == false {
-            return query
-        }
-
-        let cleaned = userInput
-            .replacingOccurrences(of: #"(?i)\b(where is|find|locate|search for|show me|the|file|path|project|in this project)\b"#, with: " ", options: .regularExpression)
-            .replacingOccurrences(of: #"[\?\.\"]"#, with: " ", options: .regularExpression)
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard cleaned.isEmpty == false else {
-            throw AppError.message("Tool argument 'query' is required.")
-        }
-        return cleaned
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["query", "limit"],
+            toolName: definition.name
+        )
     }
 }
 
@@ -302,7 +335,7 @@ private struct GetFileInfoToolModule: ToolModule {
     private let fileTools = FileTools()
 
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
-        let path = try resolvePath(arguments: arguments, userInput: userInput)
+        let path = try ToolModuleSupport.requireString(arguments["path"], key: "path")
         return try fileTools.getFileInfo(path: path)
     }
 
@@ -339,46 +372,29 @@ private struct GetFileInfoToolModule: ToolModule {
         )
     }
 
-    func normalizeArguments(_ rawArgumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String {
-        guard let decoded = ToolModuleSupport.decodeObject(rawArgumentsJSON) else {
-            return rawArgumentsJSON
-        }
-
-        guard let path = decoded["path"]?.stringValue, path.isEmpty == false else {
-            return "{}"
-        }
-        return #"{"path":"\#(escapeForJSON(path))"}"#
-    }
-
-    private func resolvePath(arguments: [String: JSONValue], userInput: String) throws -> String {
-        if let path = arguments["path"]?.stringValue, path.isEmpty == false {
-            return path
-        }
-
-        if let match = userInput.range(of: #"(~|/)[A-Za-z0-9_./-]+"#, options: .regularExpression) {
-            return String(userInput[match])
-        }
-
-        throw AppError.message("Tool argument 'path' is required.")
-    }
-
-    private func escapeForJSON(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["path"],
+            toolName: definition.name
+        )
     }
 }
 
 private struct CalendarEventsToolModule: ToolModule {
     let definition: ToolDefinition
     let routingMetadata = ToolRoutingMetadata(domain: "calendar", supportsFollowUpReuse: true, followUpSummaryStyle: .timeframe)
-    let supportsDeterministicFallbackInvocation = true
     private let calendarTools = CalendarTools()
 
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
-        let timeframe = resolveTimeframe(arguments: arguments, userInput: userInput)
-        let limit = ToolModuleSupport.resolveLimit(arguments: arguments, userInput: userInput, fallback: 10, upperBound: 20)
-        return try await calendarTools.listEvents(timeframe: timeframe, limit: limit)
+        let timeframe = try ToolModuleSupport.requireString(arguments["timeframe"], key: "timeframe")
+        let limit = try ToolModuleSupport.resolveLimit(arguments: arguments, fallback: 10, upperBound: 20)
+        return try await calendarTools.listEvents(
+            timeframe: timeframe,
+            limit: limit,
+            referenceDate: context.referenceDate,
+            timeZone: context.timeZone
+        )
     }
 
     func summarizeResult(_ result: String, context: ToolPresentationContext) -> String? {
@@ -423,17 +439,28 @@ private struct CalendarEventsToolModule: ToolModule {
             return nil
         }
 
-        let timeframe = object["timeframe"]?.stringValue ?? "today"
+        let timeframe = object["timeframe"]?.stringValue ?? "unspecified timeframe"
         let count = object["results"]?.arrayValue?.count ?? 0
         var scope: [String: JSONValue] = [
             "timeframe": .string(timeframe),
             "returned_count": .number(Double(count)),
         ]
-        if let absoluteDate = Self.absoluteDateString(for: timeframe, referenceDate: context.referenceDate, timeZone: context.timeZone) {
-            scope["absolute_date"] = .string(absoluteDate)
+        if let rangeStart = object["range_start"]?.stringValue {
+            scope["range_start"] = .string(rangeStart)
+        }
+        if let rangeEnd = object["range_end"]?.stringValue {
+            scope["range_end"] = .string(rangeEnd)
         }
 
-        let scopeSummary = "Previous calendar lookup covered \(timeframe)\(scope["absolute_date"]?.stringValue.map { " (\($0))" } ?? "") and returned \(count) event(s)."
+        let renderedRange: String
+        if let rangeStart = object["range_start"]?.stringValue,
+           let rangeEnd = object["range_end"]?.stringValue {
+            renderedRange = " (\(rangeStart) through \(rangeEnd))"
+        } else {
+            renderedRange = ""
+        }
+
+        let scopeSummary = "Previous calendar lookup covered \(timeframe)\(renderedRange) and returned \(count) event(s)."
 
         return ToolResultSnapshot(
             toolName: definition.name,
@@ -443,67 +470,21 @@ private struct CalendarEventsToolModule: ToolModule {
         )
     }
 
-    func normalizeArguments(_ rawArgumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String {
-        guard let decoded = ToolModuleSupport.decodeObject(rawArgumentsJSON) else {
-            return rawArgumentsJSON
-        }
-
-        if let timeframe = decoded["timeframe"]?.stringValue, timeframe.isEmpty == false {
-            if let limit = decoded["limit"]?.intValue {
-                return #"{"timeframe":"\#(timeframe)","limit":\#(limit)}"#
-            }
-            return #"{"timeframe":"\#(timeframe)"}"#
-        }
-
-        if decoded["start_time"] != nil || decoded["end_time"] != nil || decoded["calendar"] != nil {
-            return "{}"
-        }
-
-        return rawArgumentsJSON
-    }
-
-    private func resolveTimeframe(arguments: [String: JSONValue], userInput: String) -> String {
-        if let timeframe = arguments["timeframe"]?.stringValue, timeframe.isEmpty == false {
-            return timeframe
-        }
-
-        let input = userInput.lowercased()
-        if input.contains("tomorrow") {
-            return "tomorrow"
-        }
-        if input.contains("next 7") || input.contains("next seven") || input.contains("next week") {
-            return "next_7_days"
-        }
-        return "today"
-    }
-
-    private static func absoluteDateString(for timeframe: String, referenceDate: Date, timeZone: TimeZone) -> String? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-
-        switch timeframe {
-        case "today":
-            return formatter.string(from: referenceDate)
-        case "tomorrow":
-            guard let date = calendar.date(byAdding: .day, value: 1, to: referenceDate) else {
-                return nil
-            }
-            return formatter.string(from: date)
-        case "next_7_days":
-            let start = formatter.string(from: referenceDate)
-            guard let endDate = calendar.date(byAdding: .day, value: 7, to: referenceDate) else {
-                return nil
-            }
-            let end = formatter.string(from: endDate)
-            return "\(start) through \(end)"
-        default:
-            return nil
-        }
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["timeframe", "limit"],
+            toolName: definition.name,
+            aliases: [
+                "time_range": "timeframe",
+            ],
+            aliasHints: [
+                "time_range": "timeframe",
+                "start_time": "timeframe",
+                "end_time": "timeframe",
+                "calendar": "timeframe",
+            ]
+        )
     }
 
     static func humanDate(_ isoString: String) -> String? {
@@ -528,7 +509,7 @@ private struct SafeCommandToolModule: ToolModule {
 
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
         let command = try ToolModuleSupport.requireString(arguments["command"], key: "command")
-        let suppliedArguments = arguments["arguments"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        let suppliedArguments = try ToolModuleSupport.stringArray(arguments["arguments"], key: "arguments")
         return try terminalTools.runSafeCommand(command: command, arguments: suppliedArguments)
     }
 
@@ -545,7 +526,8 @@ private struct SafeCommandToolModule: ToolModule {
             return "\(command) completed with no output."
         }
 
-        return "\(command) output:\n\(stdout)"
+        let truncationNotice = object["truncated"]?.boolValue == true ? "\n[output truncated]" : ""
+        return "\(command) output:\n\(stdout)\(truncationNotice)"
     }
 
     func summarizeLastResult(_ result: String, context: ToolPresentationContext) -> ToolResultSnapshot? {
@@ -561,18 +543,12 @@ private struct SafeCommandToolModule: ToolModule {
         )
     }
 
-    func normalizeArguments(_ rawArgumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String {
-        guard let decoded = ToolModuleSupport.decodeObject(rawArgumentsJSON) else {
-            return rawArgumentsJSON
-        }
-
-        if let command = decoded["command"]?.stringValue, command.isEmpty == false {
-            let arguments = decoded["arguments"]?.arrayValue?.compactMap(\.stringValue) ?? []
-            let rendered = arguments.map { "\"\($0)\"" }.joined(separator: ",")
-            return #"{"command":"\#(command)","arguments":[\#(rendered)]}"#
-        }
-
-        return rawArgumentsJSON
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["command", "arguments"],
+            toolName: definition.name
+        )
     }
 }
 
@@ -583,7 +559,7 @@ private struct RecentMailToolModule: ToolModule {
     private let mailTools = MailTools()
 
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
-        let limit = ToolModuleSupport.resolveLimit(arguments: arguments, userInput: userInput, fallback: 5, upperBound: 10)
+        let limit = try ToolModuleSupport.resolveLimit(arguments: arguments, fallback: 5, upperBound: 10)
         return try mailTools.listRecentMail(limit: limit)
     }
 
@@ -628,15 +604,12 @@ private struct RecentMailToolModule: ToolModule {
         )
     }
 
-    func normalizeArguments(_ rawArgumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String {
-        guard let decoded = ToolModuleSupport.decodeObject(rawArgumentsJSON) else {
-            return rawArgumentsJSON
-        }
-
-        if let limit = decoded["limit"]?.intValue {
-            return #"{"limit":\#(limit)}"#
-        }
-        return "{}"
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["limit"],
+            toolName: definition.name
+        )
     }
 
     private func decodeRecentMail(result: String) -> MailToolSnapshot? {

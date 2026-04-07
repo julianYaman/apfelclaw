@@ -64,7 +64,7 @@ The `approvalMode` field controls when the user is prompted before a tool runs:
 |---|---|
 | `always` | Prompt before every tool call |
 | `ask-once-per-tool-per-session` | Prompt on the first use of each tool per session |
-| `trusted-readonly` | Never prompt — all tools are read-only |
+| `trusted-readonly` | Auto-approve read-only tools unless a tool explicitly requires confirmation |
 
 ## Sessions API
 

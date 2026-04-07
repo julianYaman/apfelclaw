@@ -139,14 +139,6 @@ public final class ModelClient: ModelCompleting, Sendable {
             )
         }
 
-        if toolCall.function.name == "list_calendar_events" {
-            return ToolCall(
-                id: toolCall.id,
-                name: toolCall.function.name,
-                argumentsJSON: normalizedCalendarArguments(from: toolCall.function.arguments)
-            )
-        }
-
         return ToolCall(
             id: toolCall.id,
             name: toolCall.function.name,
@@ -203,35 +195,6 @@ public final class ModelClient: ModelCompleting, Sendable {
 
     private static func normalizedSafeCommandArguments(command: String) -> String {
         #"{"command":"\#(command)","arguments":[]}"#
-    }
-
-    private static func normalizedCalendarArguments(from arguments: String) -> String {
-        let data = Data(arguments.utf8)
-        guard let decoded = try? JSONDecoder().decode([String: JSONValue].self, from: data) else {
-            return arguments
-        }
-
-        if let timeframe = decoded["timeframe"]?.stringValue, timeframe.isEmpty == false {
-            if let limit = decoded["limit"]?.intValue {
-                return #"{"timeframe":"\#(timeframe)","limit":\#(limit)}"#
-            }
-            return #"{"timeframe":"\#(timeframe)"}"#
-        }
-
-        if let startTime = decoded["start_time"]?.stringValue?.lowercased() {
-            if startTime.contains("tomorrow") {
-                return #"{"timeframe":"tomorrow"}"#
-            }
-            if startTime.contains("next week") || startTime.contains("next_7_days") {
-                return #"{"timeframe":"next_7_days"}"#
-            }
-        }
-
-        if decoded["start_time"] != nil || decoded["end_time"] != nil || decoded["calendar"] != nil {
-            return #"{}"#
-        }
-
-        return arguments
     }
 }
 

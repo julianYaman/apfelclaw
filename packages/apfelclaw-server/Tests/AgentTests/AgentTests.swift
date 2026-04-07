@@ -154,9 +154,38 @@ func directAnswerVerificationPromptPrefersToolWhenOneFits() throws {
 
     #expect(messages[0].content?.contains("This is a narrow check for a small model") == true)
     #expect(messages[0].content?.contains("Most messages should return null.") == true)
+    #expect(messages[0].content?.contains("Judge only the latest user message in this stage.") == true)
     #expect(messages[0].content?.contains(#"- "Hello." -> {"toolName":null,"reasonCode":"direct_answer_ok"}"#) == true)
     #expect(messages[0].content?.contains("should return a matching tool, not null") == true)
     #expect(messages[0].content?.contains("examples: Please show me my recent emails | Show me my most recent email | What emails arrived recently?") == true)
+}
+
+@Test
+func directAnswerVerificationPromptIgnoresConversationAndLastToolContext() throws {
+    let runtime = try ToolRuntime()
+    let lastToolCall = ToolCallRecord(
+        toolName: "list_calendar_events",
+        approved: true,
+        payload: #"{"arguments":"{}","result":"{\"results\":[],\"timeframe\":\"today\"}"}"#,
+        createdAt: "2026-04-07T10:00:00Z"
+    )
+
+    let messages = IntentRouter.buildDirectAnswerVerificationMessages(
+        messages: [
+            ("user", "What is on my calendar today?"),
+            ("assistant", "You have no calendar events for today."),
+        ],
+        userInput: "Thank you.",
+        lastToolCall: lastToolCall,
+        toolRegistry: runtime.registry,
+        referenceDate: routerReferenceDate,
+        timeZone: routerTimeZone
+    )
+
+    #expect(messages[1].content?.contains("Latest user message:\nThank you.") == true)
+    #expect(messages[1].content?.contains("Recent conversation:") == false)
+    #expect(messages[1].content?.contains("Last successful tool call:") == false)
+    #expect(messages[1].content?.contains("calendar") == false)
 }
 
 @Test
@@ -275,7 +304,7 @@ func modelClientExtractsFallbackToolCallFromFencedJSON() {
 }
 
 @Test
-func modelClientExtractsMalformedCalendarToolCallFromFencedJSON() {
+func modelClientPreservesCalendarArgumentsFromFencedJSON() {
     let content = """
     ```json
     {"tool_calls":[{"id":"call_1","type":"function","function":{"name":"list_calendar_events","arguments":"{\\"start_time\\":\\"2026-04-06T17:52:07+02:00\\",\\"end_time\\":\\"2026-04-06T23:59:59+02:00\\",\\"calendar\\":\\"personal\\"}"}}]}
@@ -285,7 +314,7 @@ func modelClientExtractsMalformedCalendarToolCallFromFencedJSON() {
     let toolCall = ModelClient.extractToolCall(from: content)
 
     #expect(toolCall?.name == "list_calendar_events")
-    #expect(toolCall?.argumentsJSON == #"{}"#)
+    #expect(toolCall?.argumentsJSON == #"{\"start_time\":\"2026-04-06T17:52:07+02:00\",\"end_time\":\"2026-04-06T23:59:59+02:00\",\"calendar\":\"personal\"}"#)
 }
 
 @Test
@@ -549,7 +578,7 @@ func toolRegistryExposesRegisteredModules() throws {
 func toolRuntimeOnlyProvidesDeterministicFallbackForSupportedTools() throws {
     let runtime = try ToolRuntime()
 
-    #expect(runtime.deterministicFallbackToolCall(named: "list_calendar_events")?.name == "list_calendar_events")
+    #expect(runtime.deterministicFallbackToolCall(named: "list_calendar_events") == nil)
     #expect(runtime.deterministicFallbackToolCall(named: "list_recent_mail")?.name == "list_recent_mail")
     #expect(runtime.deterministicFallbackToolCall(named: "find_files") == nil)
     #expect(runtime.deterministicFallbackToolCall(named: "get_file_info") == nil)

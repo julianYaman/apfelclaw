@@ -188,7 +188,14 @@ public final class ConversationService: @unchecked Sendable {
         requestTime: Date,
         requestTimeZone: TimeZone
     ) async throws -> ConversationTurnResponse {
-        let approved = autoApproveTools || toolPolicy.requiresPrompt(for: toolCall.name) == false
+        let selectedTool = toolRuntime.definition(named: toolCall.name)
+        let priorApprovalExists = try memoryStore.hasApprovedToolCall(sessionID: sessionID, toolName: toolCall.name)
+        let approved = autoApproveTools || {
+            guard let selectedTool else {
+                return false
+            }
+            return toolPolicy.requiresPrompt(for: selectedTool, priorApprovalExists: priorApprovalExists) == false
+        }()
         let summary = ToolExecutionSummary(name: toolCall.name, argumentsJSON: toolCall.argumentsJSON, approved: approved)
         if debugEnabled {
             print("[debug][tool_call] name=\(toolCall.name) approved=\(approved) arguments=\(toolCall.argumentsJSON)")
@@ -249,12 +256,12 @@ public final class ConversationService: @unchecked Sendable {
         }
 
         let assistantMessage: String
-        if let tool = toolRuntime.definition(named: toolCall.name),
+        if let tool = selectedTool,
            let module = toolRuntime.module(named: tool.name),
            let formatted = module.summarizeResult(
-                toolResult,
-                context: ToolPresentationContext(referenceDate: requestTime, timeZone: requestTimeZone)
-           ) {
+                 toolResult,
+                 context: ToolPresentationContext(referenceDate: requestTime, timeZone: requestTimeZone)
+            ) {
             assistantMessage = formatted
         } else {
             let assistantToolMessage = ChatMessage(
@@ -374,10 +381,13 @@ public final class ConversationService: @unchecked Sendable {
         humanFormatter.timeZone = timeZone
         humanFormatter.dateFormat = "EEEE, MMMM d, yyyy 'at' HH:mm:ss zzz"
 
+        let allowedKeys = selectedTool.parameters.objectValue?["properties"]?.objectValue?.keys.sorted().joined(separator: ", ") ?? "(none)"
+
         return """
         You are \(assistantName), a local macOS assistant running inside apfelclaw.
         The router already selected the tool "\(selectedTool.name)" for this turn.
         Your job is to call exactly that tool using only its documented argument keys.
+        Allowed argument keys for this tool: \(allowedKeys).
         If required information is missing, ask one short clarification question instead of inventing arguments.
         Never choose a different tool name.
         Never answer from memory when the selected tool should be used.

@@ -6,7 +6,7 @@ order: 3
 
 apfelclaw loads its runtime tool catalog from a JSON manifest (`tools.json`). The model does not read this file directly — the app converts it into an OpenAI-compatible `tools` payload, sends that to `apfel`, and maps approved tool calls back to local Swift executors.
 
-All tools are **read-only** and **require confirmation** before execution (subject to the configured [approval mode](/docs/api#approval-modes)).
+All current tools are **read-only**. Whether the user is prompted before execution depends on the configured [approval mode](/docs/api#approval-modes) and each tool's confirmation policy.
 
 ## find_files
 
@@ -38,7 +38,7 @@ Find files on this Mac using Spotlight-backed search.
 
 ## get_file_info
 
-Get metadata for an exact file or directory path.
+Get metadata for one exact file or directory path, including paths that start with `~/`.
 
 | Property | Value |
 |---|---|
@@ -50,7 +50,7 @@ Get metadata for an exact file or directory path.
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `path` | string | Yes | Absolute file or directory path |
+| `path` | string | Yes | Exact file or directory path. Prefer an absolute path; `~/...` is also supported |
 
 **Use when:** The user already provided the exact path and wants metadata (size, dates, type).
 
@@ -71,16 +71,16 @@ Read upcoming events from the user's calendars via EventKit.
 | Domain | `calendar` |
 | Read-only | Yes |
 | Follow-up reuse | Yes |
-| Deterministic fallback | Yes |
+| Deterministic fallback | No |
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `timeframe` | string | Yes | One of: `today`, `tomorrow`, `next_7_days` |
+| `timeframe` | string | Yes | Natural-language time range such as `today`, `tomorrow`, `next week`, `April 12`, or `2026-04-12` |
 | `limit` | integer | No | Maximum events (prefer 10 or fewer) |
 
-**Use when:** The user asks about meetings or schedule items for today, tomorrow, or next week.
+**Use when:** The user asks about meetings or schedule items for a specific time range.
 
 **Avoid when:** The user wants to create or edit events.
 
@@ -108,7 +108,7 @@ Run one read-only native macOS terminal command from the safe allowlist.
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `command` | string | Yes | Command name from the allowlist |
-| `arguments` | array | No | Array of string arguments |
+| `arguments` | array | No | Array of string arguments. Each command has its own safe argument rules |
 
 **Use when:** A single allowlisted read-only shell command directly answers the question.
 
@@ -161,7 +161,7 @@ Read recent messages from the Apple Mail inbox.
 
 ### Argument normalization
 
-Each tool module normalizes the model's raw argument JSON before execution. This includes stripping unexpected keys, resolving missing required parameters from the user's input text, and clamping limits to safe ranges.
+Each tool module validates the model's raw argument JSON before execution. Unexpected keys and missing required parameters are rejected instead of being guessed from the user's message. Optional limits are still clamped to safe ranges.
 
 ### Result snapshots
 
@@ -174,4 +174,4 @@ These snapshots are injected into the [Intent Router's](/docs/intent-router) con
 
 ### Deterministic fallback
 
-Tools marked with "deterministic fallback" (`list_calendar_events`, `list_recent_mail`) can be invoked with empty `{}` arguments when the model fails to produce valid arguments but routing has already decided a tool should run. The tool module fills in sensible defaults.
+Tools marked with "deterministic fallback" (`list_recent_mail`) can be invoked with empty `{}` arguments when the model fails to produce valid arguments but routing has already decided a tool should run.
