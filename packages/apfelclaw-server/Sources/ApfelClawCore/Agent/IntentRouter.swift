@@ -347,9 +347,6 @@ public enum IntentRouter {
         timeZone: TimeZone,
         strict: Bool = false
     ) -> [ChatMessage] {
-        let transcript = messages.suffix(4).map { message in
-            "\(message.role): \(message.content)"
-        }.joined(separator: "\n")
         let toolList = toolRegistry.modules.map { module in
             var lines = [
                 "- name: \(module.definition.name)",
@@ -365,18 +362,13 @@ public enum IntentRouter {
             return lines.joined(separator: "\n")
         }.joined(separator: "\n")
         let referenceSummary = renderReferenceSummary(referenceDate: referenceDate, timeZone: timeZone)
-        let lastToolSummary = renderLastToolSummary(
-            lastToolCall: lastToolCall,
-            toolRegistry: toolRegistry,
-            referenceDate: referenceDate,
-            timeZone: timeZone
-        )
 
         let system = """
         You are verifying whether the router's current answer_directly choice should be overridden by a tool.
         This is a narrow check for a small model: pick an allowed tool when one clearly fits, otherwise return null.
         \(referenceSummary)
 
+        Judge only the latest user message in this stage. Ignore prior conversation and any previous tool calls.
         Greetings, casual chat, and stable general knowledge can return null.
         Requests about the user's calendar, mail, files, or current Mac state should return a matching tool, not null.
         Most messages should return null. Only choose a tool when the user is directly asking to read personal, local, or current data.
@@ -413,11 +405,6 @@ public enum IntentRouter {
         """
 
         let user = """
-        Recent conversation:
-        \(transcript)
-
-        \(lastToolSummary)
-
         Latest user message:
         \(userInput)
         """
