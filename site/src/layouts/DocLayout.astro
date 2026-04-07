@@ -31,10 +31,19 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 <Base title={`${title} — apfelclaw docs`} description={description}>
   <nav class="doc-nav">
     <div class="doc-nav-inner">
-      <a href="/" class="nav-logo">
-        <span class="logo-icon">🍏</span>
-        <span class="logo-text">apfelclaw</span>
-      </a>
+      <div class="nav-left">
+        <button class="menu-toggle" id="menuToggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobileSidebar">
+          <span class="menu-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🍏</span>
+          <span class="logo-text">apfelclaw</span>
+        </a>
+      </div>
       <div class="nav-links">
         <a href="/docs/getting-started" class="nav-docs-link">Docs</a>
         <a
@@ -46,9 +55,13 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     </div>
   </nav>
 
+  <!-- Mobile sidebar overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+
   <div class="doc-wrapper">
     <!-- Sidebar -->
-    <aside class="doc-sidebar">
+    <aside class="doc-sidebar" id="mobileSidebar">
+      <button class="sidebar-close" id="sidebarClose" aria-label="Close navigation menu">✕</button>
       {Array.from(groupedDocs.entries()).map(([section, docs]) => (
         <div class="sidebar-section">
           <h4 class="sidebar-heading">{section}</h4>
@@ -110,6 +123,46 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
   </div>
 </Base>
 
+<script>
+  const toggle = document.getElementById("menuToggle");
+  const sidebar = document.getElementById("mobileSidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  const closeBtn = document.getElementById("sidebarClose");
+
+  function isOpen() {
+    return sidebar?.classList.contains("is-open") ?? false;
+  }
+
+  function openSidebar() {
+    if (isOpen()) return;
+    sidebar?.classList.add("is-open");
+    overlay?.classList.add("is-visible");
+    toggle?.setAttribute("aria-expanded", "true");
+    overlay?.removeAttribute("aria-hidden");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeSidebar() {
+    if (!isOpen()) return;
+    sidebar?.classList.remove("is-open");
+    overlay?.classList.remove("is-visible");
+    toggle?.setAttribute("aria-expanded", "false");
+    overlay?.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  toggle?.addEventListener("click", () => {
+    isOpen() ? closeSidebar() : openSidebar();
+  });
+
+  closeBtn?.addEventListener("click", closeSidebar);
+  overlay?.addEventListener("click", closeSidebar);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isOpen()) closeSidebar();
+  });
+</script>
+
 <style>
   /* ─── Doc Nav ─── */
   .doc-nav {
@@ -129,6 +182,81 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     display: flex;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  /* ─── Hamburger button ─── */
+  .menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.35rem;
+    border-radius: 6px;
+    color: var(--text-main);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .menu-toggle:hover {
+    background: var(--apple-flesh);
+  }
+
+  .menu-icon {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .menu-icon span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--text-main);
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+
+  /* ─── Sidebar close button ─── */
+  .sidebar-close {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    align-self: flex-end;
+  }
+
+  .sidebar-close:hover {
+    background: var(--apple-flesh);
+    color: var(--text-main);
+  }
+
+  /* ─── Mobile overlay ─── */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(36, 48, 28, 0.45);
+    z-index: 149;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .sidebar-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .nav-logo {
@@ -182,6 +310,7 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     width: 240px;
     flex-shrink: 0;
     padding: 2rem 1.5rem 2rem 1.5rem;
+    background: var(--soft-cream);
     border-right: 1px solid rgba(121, 201, 75, 0.12);
     position: sticky;
     top: 57px;
@@ -196,6 +325,10 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     letter-spacing: 0.08em;
     color: var(--text-muted);
     margin-bottom: 0.75rem;
+  }
+
+  .sidebar-section {
+    margin-bottom: 1rem;
   }
 
   .sidebar-list {
@@ -438,28 +571,43 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
   }
 
   @media (max-width: 768px) {
+    .menu-toggle {
+      display: flex;
+    }
+
+    .sidebar-close {
+      display: block;
+    }
+
+    .sidebar-overlay {
+      display: block;
+    }
+
     .doc-wrapper {
       flex-direction: column;
     }
 
     .doc-sidebar {
-      width: 100%;
-      position: static;
-      height: auto;
-      border-right: none;
-      border-bottom: 1px solid rgba(121, 201, 75, 0.12);
-      padding: 1rem 1.5rem;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100dvh;
+      width: 280px;
+      max-width: 85vw;
+      z-index: 150;
+      background: var(--soft-cream);
+      border-right: 1px solid rgba(121, 201, 75, 0.2);
+      box-shadow: 4px 0 24px rgba(36, 48, 28, 0.12);
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      overflow-y: auto;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
     }
 
-    .sidebar-list {
-      flex-direction: row;
-      flex-wrap: wrap;
-      gap: 0.25rem;
-    }
-
-    .sidebar-link {
-      font-size: 0.8rem;
-      padding: 0.3rem 0.6rem;
+    .doc-sidebar.is-open {
+      transform: translateX(0);
     }
 
     .doc-main {

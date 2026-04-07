@@ -1,8 +1,11 @@
-# AGENTS
+# AGENTS.md
 
 - Do not implement tool routing or follow-up detection with explicit word-matching lists, keyword tables, or phrase-pattern heuristics.
 - Let the model decide when a tool should run, using structured prompts and recent conversation context.
 - If extra routing reliability is needed, improve the model-facing context or schema rather than adding hardcoded trigger words.
+
+# Build
+- Don't run any build command.
 
 ## Apple Foundation Models notes
 
