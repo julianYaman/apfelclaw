@@ -71,7 +71,8 @@ const configExample = JSON.stringify(
           href="https://github.com/Arthur-Ficial/apfel"
           target="_blank"
           rel="noopener noreferrer">apfel</a
-        >.
+        >. Use the local TUI on your Mac or connect Telegram to write to it
+        remotely.
       </p>
       <div class="hero-actions">
         <a href={`https://github.com/${repo}`} class="btn btn-primary">
@@ -139,7 +140,8 @@ const configExample = JSON.stringify(
       <h2>Project structure</h2>
       <p class="section-lead">
         The repository is organized as a small monorepo with a Swift backend and
-        a terminal UI client.
+        a terminal UI client, with optional Telegram remote control backed by the
+        same local runtime.
       </p>
       <div class="card-grid">
         <div class="card">
@@ -162,6 +164,15 @@ const configExample = JSON.stringify(
             > and Bun, connecting to the local API.
           </p>
           <code>apps/tui</code>
+        </div>
+        <div class="card">
+          <div class="card-icon">✈️</div>
+          <h3>Telegram connection</h3>
+          <p>
+            Optional remote access through a private Telegram bot, linked from
+            the TUI and handled by the local backend.
+          </p>
+          <code>/remotecontrol setup telegram</code>
         </div>
         <div class="card">
           <div class="card-icon">🚀</div>

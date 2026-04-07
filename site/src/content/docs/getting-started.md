@@ -79,8 +79,11 @@ A typical config looks like:
 
 See the [API Reference](/docs/api) for details on reading and updating config via the REST API.
 
+Remote control providers store their own state separately in `~/.apfelclaw/remote-control.json`.
+
 ## What's next
 
 - Browse the [API Reference](/docs/api) for endpoint details
+- See [Connections](/docs/connections) for remote access options like Telegram
 - See available [Tools](/docs/tools) and what the agent can do
 - Learn how the [Intent Router](/docs/intent-router) decides when to use a tool

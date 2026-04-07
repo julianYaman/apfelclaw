@@ -1,7 +1,7 @@
 ---
 title: Contributing
 description: Contribution guidelines, development environment, testing, and pull request process.
-order: 5
+order: 7
 ---
 
 Thanks for contributing to apfelclaw. The project is still compact, so the goal is to keep the contribution path simple and explicit.
@@ -77,5 +77,6 @@ If your change affects prompts, tool schemas, or routing behavior, include enoug
 ## Useful references
 
 - [API Reference](/docs/api) — endpoint details and config options
+- [Connections](/docs/connections) — remote control providers and setup
 - [Tools](/docs/tools) — tool catalog and parameter schemas
 - [Intent Router](/docs/intent-router) — how routing decisions are made

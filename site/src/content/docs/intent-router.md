@@ -1,7 +1,7 @@
 ---
 title: Intent Router
 description: How apfelclaw decides when to use a tool — the 3-stage, model-driven routing flow.
-order: 4
+order: 6
 ---
 
 The Intent Router is the decision-making core of apfelclaw. On every user message, it determines whether to invoke a tool or answer directly. Rather than relying on keyword matching or hardcoded trigger phrases, it uses sequential model calls to classify intent.

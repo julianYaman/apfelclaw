@@ -13,6 +13,13 @@ const { title, description, headings, currentSlug } = Astro.props;
 
 const allDocs = await getCollection("docs");
 const sorted = allDocs.sort((a, b) => a.data.order - b.data.order);
+const groupedDocs = sorted.reduce((groups, doc) => {
+  const section = doc.data.section ?? "Documentation";
+  const current = groups.get(section) ?? [];
+  current.push(doc);
+  groups.set(section, current);
+  return groups;
+}, new Map<string, typeof sorted>());
 
 const currentIndex = sorted.findIndex((d) => d.id === currentSlug);
 const prev = currentIndex > 0 ? sorted[currentIndex - 1] : null;
@@ -42,21 +49,23 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
   <div class="doc-wrapper">
     <!-- Sidebar -->
     <aside class="doc-sidebar">
-      <div class="sidebar-section">
-        <h4 class="sidebar-heading">Documentation</h4>
-        <ul class="sidebar-list">
-          {sorted.map((doc) => (
-            <li>
-              <a
-                href={`/docs/${doc.id}`}
-                class:list={["sidebar-link", { active: doc.id === currentSlug }]}
-              >
-                {doc.data.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {Array.from(groupedDocs.entries()).map(([section, docs]) => (
+        <div class="sidebar-section">
+          <h4 class="sidebar-heading">{section}</h4>
+          <ul class="sidebar-list">
+            {docs.map((doc) => (
+              <li>
+                <a
+                  href={`/docs/${doc.id}`}
+                  class:list={["sidebar-link", { active: doc.id === currentSlug }]}
+                >
+                  {doc.data.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </aside>
 
     <!-- Main content -->

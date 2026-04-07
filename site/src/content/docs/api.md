@@ -22,6 +22,11 @@ Server: apfelclaw-server/0.1.0
 | `GET` | `/config` | Read current configuration |
 | `PATCH` | `/config` | Update configuration fields |
 | `GET` | `/tools` | List available tools |
+| `GET` | `/remotecontrol` | Read remote control provider status |
+| `GET` | `/remotecontrol/providers/telegram` | Read Telegram provider status |
+| `POST` | `/remotecontrol/providers/telegram/setup` | Verify and enable Telegram setup |
+| `POST` | `/remotecontrol/providers/telegram/disable` | Disable Telegram polling |
+| `POST` | `/remotecontrol/providers/telegram/reset` | Reset Telegram config and mappings |
 | `GET` | `/sessions` | List all sessions |
 | `POST` | `/sessions` | Create a new session |
 | `GET` | `/sessions/:id/messages` | Get messages for a session |
@@ -75,6 +80,38 @@ Returns the message history for the given session.
 
 Sends a user message to the session. The backend will route the message through the [Intent Router](/docs/intent-router), optionally invoke a [tool](/docs/tools), and return the assistant's response.
 
+## Remote control API
+
+The remote control endpoints back the TUI onboarding flow for external providers like Telegram.
+
+### `GET /remotecontrol`
+
+Returns the current provider status summary.
+
+### `GET /remotecontrol/providers/telegram`
+
+Returns the current Telegram status, including whether a bot token exists, whether polling is enabled, and whether an approved chat and user are linked.
+
+### `POST /remotecontrol/providers/telegram/setup`
+
+Accepts a bot token payload:
+
+```json
+{
+  "botToken": "123456:example-token"
+}
+```
+
+The backend verifies the token, stores the Telegram provider config, and enters linking mode.
+
+### `POST /remotecontrol/providers/telegram/disable`
+
+Disables Telegram polling without deleting the stored provider config.
+
+### `POST /remotecontrol/providers/telegram/reset`
+
+Resets the stored Telegram provider config and clears the linked remote session mapping.
+
 ## WebSocket stream
 
 ### `WS /sessions/:id/stream`
@@ -86,6 +123,7 @@ This is used by the TUI client to provide a live, streaming experience. Other cl
 ## Storage
 
 - Config: `~/.apfelclaw/config.json`
+- Remote control config: `~/.apfelclaw/remote-control.json`
 - Memory: `~/.apfelclaw/memory.sqlite`
 
 Both persist across server restarts. `Ctrl+C` triggers a graceful shutdown before process exit.
