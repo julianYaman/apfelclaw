@@ -10,8 +10,23 @@
 
 ## Development
 
-- For commits, use Conventional Commits format in the commit message.
-- When developing completely new features like slash commands, tools or other capabilities that has to do with user interactions (or the TUI), always have a task at the end of your todo-list to look into the documentation under `site/content/docs` and either update existing documentation or add new ones. This is important to keep the documentation up to date and to make sure that users can understand how to use the new features.
+- For commits, use Conventional Commits format in the commit message in the format `<type>(<scope>): <subject>`.
+- When developing completely new features like slash commands, tools or other capabilities that has to do with user interactions (or the TUI), always have a task at the end of your todo-list to look into the documentation under `site/src/content/docs` and either update existing documentation or add new ones. This is important to keep the documentation up to date and to make sure that users can understand how to use the new features.
+
+### Scopes for commits
+- `tui`: Terminal user interface
+- `core`: ApfelClawCore
+- `server`: ApfelClawServer
+- `tools`: Tool definitions and implementations
+- `docs`: Documentation updates or additions
+- `tests`: Test cases and fixtures
+- `site`: Website content and styling
+
+### Tool development
+- Read this guide: https://github.com/Arthur-Ficial/apfel/blob/main/docs/tool-calling-guide.md
+
+### Apfel Server development
+- Consider this guide for security: https://github.com/Arthur-Ficial/apfel/blob/main/docs/server-security.md
 
 ## Apple Foundation Models notes
 
