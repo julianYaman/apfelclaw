@@ -1,0 +1,796 @@
+---
+import Base from "../layouts/Base.astro";
+
+const repo = "julianyaman/apfelclaw";
+
+const installStep = `cd apps/tui
+bun install`;
+
+const altScripts = `./apfelclaw          # backend
+npm run dev:server   # alternative
+npm run dev:tui      # TUI client`;
+
+const configExample = JSON.stringify(
+  {
+    assistantName: "Apfelclaw",
+    userName: "You",
+    approvalMode: "trusted-readonly",
+    debug: false,
+  },
+  null,
+  2,
+);
+---
+
+<Base
+  title="apfelclaw — local AI agent for macOS"
+  description="A locally running AI agent for macOS tasks using Apple's Foundation model. Open source, private by design."
+>
+  <!-- ───────── NAV ───────── -->
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <span class="logo-icon">🍏</span>
+        <span class="logo-text">apfelclaw</span>
+      </a>
+      <div class="nav-links">
+        <a href="/docs/getting-started">Docs</a>
+        <a href="#features">Features</a>
+        <a href="#quickstart">Quick start</a>
+        <a
+          href={`https://github.com/${repo}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="nav-gh"
+        >
+          <img
+            src={`https://img.shields.io/github/stars/${repo}?style=flat&color=79C94B&labelColor=24301C&logo=github&logoColor=white`}
+            alt="GitHub stars"
+            class="star-badge-nav"
+          />
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ───────── HERO ───────── -->
+  <header class="hero">
+    <div class="container">
+      <span class="hero-badge">Experimental</span>
+      <h1>apfelclaw</h1>
+      <p class="hero-sub">
+        A locally running AI agent for macOS tasks, powered by Apple's
+        Foundation model via <a
+          href="https://github.com/Arthur-Ficial/apfel"
+          target="_blank"
+          rel="noopener noreferrer">apfel</a
+        >.
+      </p>
+      <div class="hero-actions">
+        <a href={`https://github.com/${repo}`} class="btn btn-primary">
+          View on GitHub
+        </a>
+        <a href="/docs/getting-started" class="btn btn-secondary"> Docs </a>
+        <a href="#quickstart" class="btn btn-secondary"> Get started </a>
+      </div>
+      <div class="hero-badges">
+        <img
+          src={`https://img.shields.io/github/license/${repo}?style=flat&color=A7E163&labelColor=24301C`}
+          alt="License"
+        />
+        <img
+          src={`https://img.shields.io/github/stars/${repo}?style=flat&color=79C94B&labelColor=24301C`}
+          alt="Stars"
+        />
+        <img
+          src={`https://img.shields.io/github/last-commit/${repo}?style=flat&color=79C94B&labelColor=24301C`}
+          alt="Last commit"
+        />
+        <img
+          src={`https://img.shields.io/github/issues/${repo}?style=flat&color=A7E163&labelColor=24301C`}
+          alt="Open issues"
+        />
+      </div>
+    </div>
+  </header>
+
+  <!-- ───────── NOTICE ───────── -->
+  <section class="notice">
+    <div class="container">
+      <div class="notice-box">
+        <strong>Early development</strong> — This project is an experiment
+        exploring how well Apple's Foundation model works as an agent. It is not
+        meant for production use or real-world tasks yet. Use at your own risk —
+        we cannot guarantee its reliability or security.
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── SHOWCASE ───────── -->
+  <section class="showcase">
+    <div class="container">
+      <div class="showcase-wrapper">
+        <video
+          autoplay
+          loop
+          muted
+          playsinline
+          preload="metadata"
+          poster=""
+          aria-label="apfelclaw demo — terminal AI agent in action"
+        >
+          <source src="/apfelclaw-showcase.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── STRUCTURE ───────── -->
+  <section id="features" class="section">
+    <div class="container">
+      <h2>Project structure</h2>
+      <p class="section-lead">
+        The repository is organized as a small monorepo with a Swift backend and
+        a terminal UI client.
+      </p>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-icon">⚙️</div>
+          <h3>apfelclaw-server</h3>
+          <p>
+            Swift backend runtime — local API, tool execution, conversation
+            management, and persistence.
+          </p>
+          <code>packages/apfelclaw-server</code>
+        </div>
+        <div class="card">
+          <div class="card-icon">🖥️</div>
+          <h3>TUI client</h3>
+          <p>
+            Terminal user interface built with <a
+              href="https://opentui.dev"
+              target="_blank"
+              rel="noopener noreferrer">OpenTUI</a
+            > and Bun, connecting to the local API.
+          </p>
+          <code>apps/tui</code>
+        </div>
+        <div class="card">
+          <div class="card-icon">🚀</div>
+          <h3>Launcher</h3>
+          <p>
+            A convenience shell script at the repo root that starts the backend
+            server in one command.
+          </p>
+          <code>./apfelclaw</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── STATUS ───────── -->
+  <section class="section section-alt">
+    <div class="container">
+      <h2>Status</h2>
+      <p class="section-lead">
+        Currently macOS-only. The backend depends on Apple platform APIs like
+        EventKit, Apple Mail, and Spotlight-backed file search, and expects <code
+          >apfel</code
+        > to be installed locally for model execution.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── PREREQUISITES ───────── -->
+  <section class="section">
+    <div class="container">
+      <h2>Prerequisites</h2>
+      <ul class="prereq-list">
+        <li><strong>macOS 13</strong> or newer</li>
+        <li><strong>Swift 6.3+</strong></li>
+        <li><strong>Bun 1.0+</strong></li>
+        <li>
+          <code>apfel</code> installed and available on <code>PATH</code>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ───────── QUICKSTART ───────── -->
+  <section id="quickstart" class="section section-alt">
+    <div class="container">
+      <h2>Quick start</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <div>
+            <h3>Start the backend server</h3>
+            <pre><code>./apfelclaw</code></pre>
+            <p class="step-note">
+              The server listens on <code>127.0.0.1:4242</code>.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <div>
+            <h3>Install TUI dependencies</h3>
+            <pre><code>{installStep}</code></pre>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <div>
+            <h3>Start the TUI client</h3>
+            <pre><code>bun run dev</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="steps-alt">
+        Or use the root convenience scripts:
+      </p>
+      <pre><code>{altScripts}</code></pre>
+    </div>
+  </section>
+
+  <!-- ───────── API ───────── -->
+  <section id="api" class="section">
+    <div class="container">
+      <h2>API endpoints</h2>
+      <p class="section-lead">
+        The backend exposes a local REST API with WebSocket support for live
+        session events.
+      </p>
+      <div class="api-table-wrap">
+        <table class="api-table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Endpoint</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="method get">GET</span></td><td>/health</td></tr>
+            <tr><td><span class="method get">GET</span></td><td>/config</td></tr>
+            <tr><td><span class="method patch">PATCH</span></td><td>/config</td></tr>
+            <tr><td><span class="method get">GET</span></td><td>/tools</td></tr>
+            <tr><td><span class="method get">GET</span></td><td>/sessions</td></tr>
+            <tr><td><span class="method post">POST</span></td><td>/sessions</td></tr>
+            <tr>
+              <td><span class="method get">GET</span></td>
+              <td>/sessions/:id/messages</td>
+            </tr>
+            <tr>
+              <td><span class="method post">POST</span></td>
+              <td>/sessions/:id/messages</td>
+            </tr>
+            <tr>
+              <td><span class="method ws">WS</span></td>
+              <td>/sessions/:id/stream</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="api-note">
+        Response header: <code>Server: apfelclaw-server/0.1.0</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── CONFIG ───────── -->
+  <section class="section section-alt">
+    <div class="container">
+      <h2>Configuration</h2>
+      <p class="section-lead">
+        Config lives in <code>~/.apfelclaw/config.json</code> and persists
+        across server restarts. SQLite memory is stored at <code
+          >~/.apfelclaw/memory.sqlite</code
+        >.
+      </p>
+      <pre><code>{configExample}</code></pre>
+      <p class="config-detail">
+        Supported <code>approvalMode</code> values: <code>always</code>, <code
+          >ask-once-per-tool-per-session</code
+        >, <code>trusted-readonly</code>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── CONTRIBUTING ───────── -->
+  <section class="section">
+    <div class="container">
+      <h2>Contributing</h2>
+      <p class="section-lead">
+        Contribution guidelines live in <a
+          href={`https://github.com/${repo}/blob/main/CONTRIBUTING.md`}
+          target="_blank"
+          rel="noopener noreferrer"><code>CONTRIBUTING.md</code></a
+        >. Please read that file before opening a pull request.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── FOOTER ───────── -->
+  <footer>
+    <div class="container footer-inner">
+      <div class="footer-left">
+        <span class="logo-icon">🍏</span>
+        <span class="footer-name">apfelclaw</span>
+        <span class="footer-sep">·</span>
+        <span class="footer-license">MIT License</span>
+      </div>
+      <div class="footer-right">
+        <a
+          href={`https://github.com/${repo}`}
+          target="_blank"
+          rel="noopener noreferrer">GitHub</a
+        >
+        <a
+          href={`https://github.com/${repo}/blob/main/CONTRIBUTING.md`}
+          target="_blank"
+          rel="noopener noreferrer">Contributing</a
+        >
+        <a
+          href={`https://github.com/${repo}/blob/main/LICENSE`}
+          target="_blank"
+          rel="noopener noreferrer">License</a
+        >
+        <a
+          href="https://yaman.pro"
+          target="_blank"
+          rel="noopener noreferrer">yaman.pro</a
+        >
+      </div>
+    </div>
+  </footer>
+</Base>
+
+<style>
+  /* ─── Nav ─── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255, 253, 244, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(121, 201, 75, 0.15);
+  }
+
+  .nav-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--text-main);
+  }
+
+  .nav-logo:hover {
+    text-decoration: none;
+  }
+
+  .logo-icon {
+    font-size: 1.3rem;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .nav-links a {
+    color: var(--text-muted);
+  }
+
+  .nav-links a:hover {
+    color: var(--leaf-green);
+    text-decoration: none;
+  }
+
+  .nav-gh {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .star-badge-nav {
+    height: 18px;
+    vertical-align: middle;
+  }
+
+  /* ─── Container ─── */
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  /* ─── Hero ─── */
+  .hero {
+    padding: 5rem 0 3.5rem;
+    text-align: center;
+  }
+
+  .hero-badge {
+    display: inline-block;
+    background: var(--fresh-lime);
+    color: var(--text-main);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.3em 0.9em;
+    border-radius: 999px;
+    margin-bottom: 1.25rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 6vw, 3.75rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 1rem;
+  }
+
+  .hero-sub {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    max-width: 540px;
+    margin: 0 auto 2rem;
+  }
+
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.65rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .btn:hover {
+    text-decoration: none;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary {
+    background: var(--apple-peel);
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    background: var(--leaf-green);
+  }
+
+  .btn-secondary {
+    background: var(--apple-flesh);
+    color: var(--text-main);
+  }
+
+  .btn-secondary:hover {
+    background: #e9f0c6;
+  }
+
+  .hero-badges {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .hero-badges img {
+    height: 22px;
+  }
+
+  /* ─── Notice ─── */
+  .notice {
+    padding: 0 0 1rem;
+  }
+
+  .notice-box {
+    max-width: 660px;
+    margin: 0 auto;
+    background: #fef6e0;
+    border: 1px solid #e5d5a0;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    font-size: 0.9rem;
+    color: var(--stem-brown);
+    text-align: center;
+  }
+
+  /* ─── Showcase ─── */
+  .showcase {
+    padding: 2rem 0 1rem;
+  }
+
+  .showcase-wrapper {
+    max-width: 720px;
+    margin: 0 auto;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 5px solid rgba(121, 201, 75, 0.5);
+    box-shadow: 0 6px 30px rgba(36, 48, 28, 0.12);
+  }
+
+  .showcase-wrapper video {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* ─── Sections ─── */
+  .section {
+    padding: 4rem 0;
+  }
+
+  .section-alt {
+    background: var(--apple-flesh);
+  }
+
+  .section h2 {
+    font-size: 1.75rem;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+  }
+
+  .section-lead {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    max-width: 640px;
+    margin-bottom: 2rem;
+  }
+
+  /* ─── Cards ─── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid rgba(121, 201, 75, 0.18);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .card-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+
+  .card p {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  /* ─── Prerequisites ─── */
+  .prereq-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .prereq-list li {
+    background: #fff;
+    border: 1px solid rgba(121, 201, 75, 0.18);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  /* ─── Steps ─── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    margin-bottom: 2rem;
+  }
+
+  .step {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .step-num {
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--apple-peel);
+    color: #fff;
+    font-weight: 800;
+    border-radius: 50%;
+    font-size: 1rem;
+  }
+
+  .step h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .step-note {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+
+  .steps-alt {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  /* ─── API table ─── */
+  .api-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+
+  .api-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .api-table th {
+    text-align: left;
+    font-weight: 700;
+    padding: 0.6rem 1rem;
+    background: var(--apple-flesh);
+    border-bottom: 2px solid rgba(121, 201, 75, 0.25);
+  }
+
+  .api-table td {
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid rgba(121, 201, 75, 0.1);
+  }
+
+  .method {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.15em 0.55em;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .method.get {
+    background: #ddf4cc;
+    color: var(--leaf-green);
+  }
+
+  .method.post {
+    background: #d0e8ff;
+    color: #2a5ea8;
+  }
+
+  .method.patch {
+    background: #fef0cc;
+    color: #8a6b1e;
+  }
+
+  .method.ws {
+    background: #e8d8f4;
+    color: #6b3fa0;
+  }
+
+  .api-note {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+  }
+
+  /* ─── Config ─── */
+  .config-detail {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 1rem;
+  }
+
+  /* ─── Footer ─── */
+  footer {
+    border-top: 1px solid rgba(121, 201, 75, 0.15);
+    padding: 2rem 0;
+  }
+
+  .footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.875rem;
+  }
+
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+  }
+
+  .footer-name {
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .footer-sep {
+    opacity: 0.35;
+  }
+
+  .footer-right {
+    display: flex;
+    gap: 1.25rem;
+  }
+
+  .footer-right a {
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .footer-right a:hover {
+    color: var(--leaf-green);
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 600px) {
+    .nav-links a:not(.nav-gh) {
+      display: none;
+    }
+
+    .hero {
+      padding: 3.5rem 0 2.5rem;
+    }
+
+    .section {
+      padding: 2.5rem 0;
+    }
+
+    .step {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .footer-inner {
+      flex-direction: column;
+      text-align: center;
+    }
+  }
+</style>

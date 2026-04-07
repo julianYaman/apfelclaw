@@ -1,0 +1,22 @@
+.DS_Store
+node_modules/
+.build/
+**/.build/
+.swiftpm/
+**/.swiftpm/
+DerivedData/
+xcuserdata/
+.vscode/
+.idea/
+
+.env
+.env.local
+.env.*.local
+.netrc
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Astro
+dist/

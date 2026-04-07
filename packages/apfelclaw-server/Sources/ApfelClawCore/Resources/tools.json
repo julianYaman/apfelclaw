@@ -1,0 +1,146 @@
+{
+  "tools": [
+    {
+      "name": "find_files",
+      "description": "Find files on this Mac using Spotlight-backed search. Use this when the user asks where a file is located.",
+      "use_when": "The user asks where a file is, wants to locate a document, or needs matching file paths.",
+      "avoid_when": "The user already gave an exact absolute path or wants file contents instead of locations.",
+      "examples": [
+        "Where is my resume PDF?",
+        "Find the config file for apfelclaw"
+      ],
+      "returns": "A short list of matching file paths and metadata.",
+      "readonly": true,
+      "requires_confirmation": true,
+      "result_format": "file_search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The file name or search phrase to look for. Keep it short and concrete."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results to return. Optional. Prefer 5 or less."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "get_file_info",
+      "description": "Get metadata for an exact file or directory path.",
+      "use_when": "The user provides an exact path and wants details like size, type, timestamps, or whether it exists.",
+      "avoid_when": "The user does not know the path yet and needs a search first.",
+      "examples": [
+        "Show info for /Applications/Mail.app",
+        "What is this file? /tmp/output.log"
+      ],
+      "returns": "Structured metadata for one exact file system path.",
+      "readonly": true,
+      "requires_confirmation": true,
+      "result_format": "file_info",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The exact absolute path to inspect."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "list_calendar_events",
+      "description": "Read upcoming events from the user's calendars. Use timeframe values today, tomorrow, or next_7_days.",
+      "use_when": "The user asks about calendar events, meetings, appointments, or schedule items for today, tomorrow, or the next week.",
+      "avoid_when": "The user asks to create, edit, or delete events, or asks for dates outside the supported timeframe values.",
+      "examples": [
+        "Please show me my calendar events for today",
+        "What meetings do I have today?",
+        "Show my calendar for tomorrow"
+      ],
+      "returns": "Upcoming calendar events for the requested timeframe.",
+      "readonly": true,
+      "requires_confirmation": true,
+      "result_format": "calendar_events",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeframe": {
+            "type": "string",
+            "description": "Calendar range. Use exactly one of today, tomorrow, or next_7_days."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of events to return. Optional. Prefer 10 or less."
+          }
+        },
+        "required": [
+          "timeframe"
+        ]
+      }
+    },
+    {
+      "name": "run_safe_command",
+      "description": "Run one read-only native macOS terminal command from the safe allowlist.",
+      "use_when": "A read-only shell command is the most direct way to answer the question and the command is in the allowlist.",
+      "avoid_when": "The task needs shell syntax, write access, pipes, redirects, or any command not explicitly allowed.",
+      "examples": [
+        "What time is it?",
+        "Who am I on this machine?"
+      ],
+      "returns": "Plain command output from one allowlisted read-only command.",
+      "readonly": true,
+      "requires_confirmation": true,
+      "result_format": "command_output",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Use exactly one safe command name: pwd, ls, whoami, date, mdfind, mdls, stat, find, ps, lsof."
+          },
+          "arguments": {
+            "type": "array",
+            "description": "Optional command arguments as plain strings. Never use shell syntax, pipes, redirects, or semicolons."
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    },
+    {
+      "name": "list_recent_mail",
+      "description": "Read the most recent messages from Apple Mail inbox. Use this for questions about the latest emails the user received.",
+      "use_when": "The user asks for the latest, newest, most recent, or recently received emails.",
+      "avoid_when": "The user asks for a specific sender, specific subject, message body, or mail actions like reply, archive, or send.",
+      "examples": [
+        "Please show me my recent emails",
+        "Show me my most recent email",
+        "What emails arrived recently?"
+      ],
+      "returns": "Recent inbox messages with subject, sender, received date, and mailbox name.",
+      "readonly": true,
+      "requires_confirmation": true,
+      "result_format": "recent_mail",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of recent messages to return. Optional. Prefer 5 or less."
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

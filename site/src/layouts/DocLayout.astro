@@ -1,0 +1,476 @@
+---
+import Base from "./Base.astro";
+import { getCollection } from "astro:content";
+
+export interface Props {
+  title: string;
+  description: string;
+  headings: { depth: number; slug: string; text: string }[];
+  currentSlug: string;
+}
+
+const { title, description, headings, currentSlug } = Astro.props;
+
+const allDocs = await getCollection("docs");
+const sorted = allDocs.sort((a, b) => a.data.order - b.data.order);
+
+const currentIndex = sorted.findIndex((d) => d.id === currentSlug);
+const prev = currentIndex > 0 ? sorted[currentIndex - 1] : null;
+const next = currentIndex < sorted.length - 1 ? sorted[currentIndex + 1] : null;
+
+const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+<Base title={`${title} — apfelclaw docs`} description={description}>
+  <nav class="doc-nav">
+    <div class="doc-nav-inner">
+      <a href="/" class="nav-logo">
+        <span class="logo-icon">🍏</span>
+        <span class="logo-text">apfelclaw</span>
+      </a>
+      <div class="nav-links">
+        <a href="/docs/getting-started" class="nav-docs-link">Docs</a>
+        <a
+          href="https://github.com/anomalyco/apfelclaw"
+          target="_blank"
+          rel="noopener noreferrer">GitHub</a
+        >
+      </div>
+    </div>
+  </nav>
+
+  <div class="doc-wrapper">
+    <!-- Sidebar -->
+    <aside class="doc-sidebar">
+      <div class="sidebar-section">
+        <h4 class="sidebar-heading">Documentation</h4>
+        <ul class="sidebar-list">
+          {sorted.map((doc) => (
+            <li>
+              <a
+                href={`/docs/${doc.id}`}
+                class:list={["sidebar-link", { active: doc.id === currentSlug }]}
+              >
+                {doc.data.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="doc-main">
+      <article class="doc-article">
+        <h1 class="doc-title">{title}</h1>
+        <div class="prose">
+          <slot />
+        </div>
+
+        <!-- Prev / Next -->
+        <nav class="doc-pager">
+          {prev ? (
+            <a href={`/docs/${prev.id}`} class="pager-link pager-prev">
+              <span class="pager-label">Previous</span>
+              <span class="pager-title">{prev.data.title}</span>
+            </a>
+          ) : <div />}
+          {next ? (
+            <a href={`/docs/${next.id}`} class="pager-link pager-next">
+              <span class="pager-label">Next</span>
+              <span class="pager-title">{next.data.title}</span>
+            </a>
+          ) : <div />}
+        </nav>
+      </article>
+
+      <!-- Table of contents -->
+      {tocHeadings.length > 0 && (
+        <aside class="doc-toc">
+          <h4 class="toc-heading">On this page</h4>
+          <ul class="toc-list">
+            {tocHeadings.map((h) => (
+              <li class:list={[{ "toc-h3": h.depth === 3 }]}>
+                <a href={`#${h.slug}`} class="toc-link">{h.text}</a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
+    </main>
+  </div>
+</Base>
+
+<style>
+  /* ─── Doc Nav ─── */
+  .doc-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255, 253, 244, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(121, 201, 75, 0.15);
+  }
+
+  .doc-nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--text-main);
+  }
+
+  .nav-logo:hover {
+    text-decoration: none;
+  }
+
+  .logo-icon {
+    font-size: 1.3rem;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .nav-links a {
+    color: var(--text-muted);
+  }
+
+  .nav-links a:hover {
+    color: var(--leaf-green);
+    text-decoration: none;
+  }
+
+  .nav-docs-link {
+    color: var(--leaf-green) !important;
+  }
+
+  /* ─── Layout ─── */
+  .doc-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    min-height: calc(100vh - 57px);
+  }
+
+  /* ─── Sidebar ─── */
+  .doc-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    padding: 2rem 1.5rem 2rem 1.5rem;
+    border-right: 1px solid rgba(121, 201, 75, 0.12);
+    position: sticky;
+    top: 57px;
+    height: calc(100vh - 57px);
+    overflow-y: auto;
+  }
+
+  .sidebar-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .sidebar-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .sidebar-link {
+    display: block;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .sidebar-link:hover {
+    background: var(--apple-flesh);
+    color: var(--text-main);
+    text-decoration: none;
+  }
+
+  .sidebar-link.active {
+    background: var(--apple-flesh);
+    color: var(--leaf-green);
+  }
+
+  /* ─── Main ─── */
+  .doc-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 1rem;
+    padding: 2rem 2rem 4rem;
+  }
+
+  .doc-article {
+    flex: 1;
+    min-width: 0;
+    max-width: 720px;
+  }
+
+  .doc-title {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 2rem;
+    line-height: 1.2;
+  }
+
+  /* ─── Prose ─── */
+  .prose :global(h2) {
+    font-size: 1.4rem;
+    font-weight: 800;
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+  }
+
+  .prose :global(h3) {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .prose :global(h4) {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .prose :global(p) {
+    margin-bottom: 1rem;
+    line-height: 1.7;
+  }
+
+  .prose :global(ul),
+  .prose :global(ol) {
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+  }
+
+  .prose :global(li) {
+    margin-bottom: 0.35rem;
+    line-height: 1.65;
+  }
+
+  .prose :global(pre) {
+    margin-bottom: 1.25rem;
+  }
+
+  .prose :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .prose :global(th) {
+    text-align: left;
+    font-weight: 700;
+    padding: 0.55rem 0.75rem;
+    background: var(--apple-flesh);
+    border-bottom: 2px solid rgba(121, 201, 75, 0.25);
+  }
+
+  .prose :global(td) {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(121, 201, 75, 0.1);
+    vertical-align: top;
+  }
+
+  .prose :global(blockquote) {
+    border-left: 3px solid var(--apple-peel);
+    padding: 0.5rem 1rem;
+    margin: 0 0 1rem;
+    background: var(--apple-flesh);
+    border-radius: 0 6px 6px 0;
+    color: var(--text-muted);
+  }
+
+  .prose :global(blockquote p) {
+    margin-bottom: 0;
+  }
+
+  .prose :global(hr) {
+    border: none;
+    border-top: 1px solid rgba(121, 201, 75, 0.2);
+    margin: 2rem 0;
+  }
+
+  .prose :global(strong) {
+    font-weight: 700;
+  }
+
+  /* ─── Prev/Next ─── */
+  .doc-pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid rgba(121, 201, 75, 0.15);
+  }
+
+  .pager-link {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(121, 201, 75, 0.2);
+    border-radius: 8px;
+    transition: background 0.12s, border-color 0.12s;
+    max-width: 48%;
+  }
+
+  .pager-link:hover {
+    background: var(--apple-flesh);
+    border-color: var(--apple-peel);
+    text-decoration: none;
+  }
+
+  .pager-prev {
+    align-items: flex-start;
+  }
+
+  .pager-next {
+    align-items: flex-end;
+    margin-left: auto;
+  }
+
+  .pager-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .pager-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--leaf-green);
+  }
+
+  /* ─── Table of Contents ─── */
+  .doc-toc {
+    width: 200px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 80px;
+    align-self: flex-start;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+
+  .toc-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .toc-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-left: 1px solid rgba(121, 201, 75, 0.15);
+    padding-left: 0.75rem;
+  }
+
+  .toc-link {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: block;
+    line-height: 1.4;
+  }
+
+  .toc-link:hover {
+    color: var(--leaf-green);
+    text-decoration: none;
+  }
+
+  .toc-h3 {
+    padding-left: 0.75rem;
+  }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 1024px) {
+    .doc-toc {
+      display: none;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .doc-wrapper {
+      flex-direction: column;
+    }
+
+    .doc-sidebar {
+      width: 100%;
+      position: static;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid rgba(121, 201, 75, 0.12);
+      padding: 1rem 1.5rem;
+    }
+
+    .sidebar-list {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+
+    .sidebar-link {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.6rem;
+    }
+
+    .doc-main {
+      padding: 1.5rem 1.5rem 3rem;
+    }
+
+    .doc-title {
+      font-size: 1.6rem;
+    }
+
+    .doc-pager {
+      flex-direction: column;
+    }
+
+    .pager-link {
+      max-width: 100%;
+    }
+
+    .pager-next {
+      align-items: flex-start;
+    }
+  }
+</style>

@@ -1,0 +1,12 @@
+{
+  "name": "apfelclaw-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:server": "swift run --package-path packages/apfelclaw-server apfelclaw-server",
+    "test:server": "swift test --package-path packages/apfelclaw-server",
+    "dev:tui": "bun --cwd apps/tui run dev"
+  }
+}

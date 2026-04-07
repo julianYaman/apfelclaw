@@ -1,0 +1,99 @@
+---
+export interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <link rel="preconnect" href="https://fonts.bunny.net" />
+    <link
+      href="https://fonts.bunny.net/css?family=manrope:400,600,700,800"
+      rel="stylesheet"
+    />
+
+    <script
+      defer
+      data-domain="apfelclaw.yamanlabs.com"
+      src="https://analytics.yamanlabs.com/js/script.js"></script>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  *,
+  *::before,
+  *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    --apple-peel: #79c94b;
+    --fresh-lime: #a7e163;
+    --apple-flesh: #f3f8d8;
+    --leaf-green: #4f8f2f;
+    --stem-brown: #7a5a2b;
+    --soft-cream: #fffdf4;
+    --text-main: #24301c;
+    --text-muted: #5e6b52;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: "Manrope", system-ui, -apple-system, sans-serif;
+    color: var(--text-main);
+    background: var(--soft-cream);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--leaf-green);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  code {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 0.9em;
+    background: var(--apple-flesh);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+  }
+
+  pre {
+    background: var(--text-main);
+    color: #e8ecd8;
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+  }
+</style>
