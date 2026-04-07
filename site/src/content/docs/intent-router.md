@@ -88,6 +88,8 @@ This stage runs when Stage 1 chose `answer_directly` and Stage 2 did not recover
 
 The model is re-presented with the tool list and asked whether a tool should **override** the direct answer decision. This catches cases where the user asks something like "What's on my calendar?" and the model incorrectly decides it can answer without a tool.
 
+Unlike the classifier and follow-up stages, this verification step looks only at the latest user message. It intentionally ignores prior conversation and previous tool calls so that acknowledgements like "Thanks" or "Thank you." do not get pulled back into a calendar or mail tool route just because the earlier context was tool-backed.
+
 ```json
 {
   "toolName": "list_calendar_events",
