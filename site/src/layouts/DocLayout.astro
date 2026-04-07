@@ -310,6 +310,7 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     width: 240px;
     flex-shrink: 0;
     padding: 2rem 1.5rem 2rem 1.5rem;
+    background: var(--soft-cream);
     border-right: 1px solid rgba(121, 201, 75, 0.12);
     position: sticky;
     top: 57px;
@@ -324,6 +325,10 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     letter-spacing: 0.08em;
     color: var(--text-muted);
     margin-bottom: 0.75rem;
+  }
+
+  .sidebar-section {
+    margin-bottom: 1rem;
   }
 
   .sidebar-list {
@@ -590,6 +595,7 @@ const tocHeadings = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
       width: 280px;
       max-width: 85vw;
       z-index: 150;
+      background: var(--soft-cream);
       border-right: 1px solid rgba(121, 201, 75, 0.2);
       box-shadow: 4px 0 24px rgba(36, 48, 28, 0.12);
       transform: translateX(-100%);
