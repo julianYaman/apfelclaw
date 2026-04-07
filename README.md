@@ -1,8 +1,16 @@
-# apfelclaw
+<div align="center">
 
-> ATTENTION: This project is in very early development. It is not meant to be used in a production enviroment and for any real-world tasks. It is just an experiment to explore how good Apple's Foundation model could be used as an agent.
+<img src="site/public/apfelclaw.png" alt="apfelclaw logo" width="128" />
 
-`apfelclaw` is a locally running AI agent for tasks with macOS using Apple's Foundation model via [apfel](https://github.com/Arthur-Ficial/apfel).
+<h1>apfelclaw</h1>
+
+<blockquote align="left"><b>Disclaimer: </b>This project is in very early development. It is not intended for production use or real-world tasks and is provided for experimental purposes only. Use it at your own risk. We are not liable for any security issues, data loss, or other damages resulting from its use.</blockquote><br />
+
+<p><code>apfelclaw</code> is a locally running AI agent for tasks with macOS using Apple's Foundation model via <a href="https://github.com/Arthur-Ficial/apfel">apfel</a>.</p>
+
+<video src="site/public/apfelclaw-showcase.mp4" controls width="100%"></video>
+
+</div>
 
 The repository is organized as a small monorepo:
 

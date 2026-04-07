@@ -4,8 +4,14 @@
 - Let the model decide when a tool should run, using structured prompts and recent conversation context.
 - If extra routing reliability is needed, improve the model-facing context or schema rather than adding hardcoded trigger words.
 
-# Build
+## Build
+
 - Don't run any build command.
+
+## Development
+
+- For commits, use Conventional Commits format in the commit message.
+- When developing completely new features like slash commands, tools or other capabilities that has to do with user interactions (or the TUI), always have a task at the end of your todo-list to look into the documentation under `site/content/docs` and either update existing documentation or add new ones. This is important to keep the documentation up to date and to make sure that users can understand how to use the new features.
 
 ## Apple Foundation Models notes
 
