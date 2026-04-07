@@ -9,6 +9,21 @@ type ConfigResponse = {
   debug: boolean
 }
 
+type TelegramRemoteControlStatus = {
+  enabled: boolean
+  pollingEnabled: boolean
+  autoApproveTools: boolean
+  hasBotToken: boolean
+  botUsername: string | null
+  approvedChatID: number | null
+  approvedUserID: number | null
+  linking: boolean
+}
+
+type RemoteControlStatus = {
+  telegram: TelegramRemoteControlStatus
+}
+
 type SessionRecord = {
   id: number
   title: string
@@ -134,12 +149,75 @@ function parseConfigSetCommand(content: string) {
   }
 }
 
+function parseRemoteControlCommand(content: string) {
+  const trimmed = content.trim()
+
+  if (trimmed === "/remotecontrol") {
+    return { action: "show" as const }
+  }
+
+  if (trimmed === "/remotecontrol status telegram") {
+    return { action: "status" as const }
+  }
+
+  if (trimmed === "/remotecontrol disable telegram") {
+    return { action: "disable" as const }
+  }
+
+  if (trimmed === "/remotecontrol reset telegram") {
+    return { action: "reset" as const }
+  }
+
+  const setupMatch = trimmed.match(/^\/remotecontrol\s+setup\s+telegram\s+(.+)$/)
+  if (setupMatch) {
+    return {
+      action: "setup" as const,
+      botToken: setupMatch[1].trim(),
+    }
+  }
+
+  return null
+}
+
 function readServerVersion(response: Response) {
   return response.headers.get("server")?.trim() ?? null
 }
 
 function formatReconnectHint(status: string) {
   return `${status} · use /new to retry`
+}
+
+function formatTelegramRemoteStatus(status: TelegramRemoteControlStatus) {
+  const lines = [
+    "Remote control provider: telegram",
+    `enabled: ${status.enabled}`,
+    `pollingEnabled: ${status.pollingEnabled}`,
+    `autoApproveTools: ${status.autoApproveTools}`,
+    `hasBotToken: ${status.hasBotToken}`,
+    `botUsername: ${status.botUsername ?? "(unverified)"}`,
+    `approvedChatID: ${status.approvedChatID ?? "(not linked)"}`,
+    `approvedUserID: ${status.approvedUserID ?? "(not linked)"}`,
+    `linking: ${status.linking}`,
+  ]
+
+  if (status.botUsername && status.linking) {
+    lines.push(`Next step: send a private message to @${status.botUsername}, then run /remotecontrol status telegram.`)
+  }
+
+  return lines.join("\n")
+}
+
+function formatRemoteControlSummary(status: RemoteControlStatus) {
+  return [
+    formatTelegramRemoteStatus(status.telegram),
+    "",
+    "Commands:",
+    "/remotecontrol",
+    "/remotecontrol status telegram",
+    "/remotecontrol setup telegram <botToken>",
+    "/remotecontrol disable telegram",
+    "/remotecontrol reset telegram",
+  ].join("\n")
 }
 
 function splitMessageLines(content: string) {
@@ -360,6 +438,11 @@ function App({ shutdown }: AppProps) {
             "/config set userName <value>",
             "/config set approvalMode <always|ask-once-per-tool-per-session|trusted-readonly>",
             "/config set debug <true|false>",
+            "/remotecontrol shows remote control status.",
+            "/remotecontrol setup telegram <botToken>",
+            "/remotecontrol status telegram",
+            "/remotecontrol disable telegram",
+            "/remotecontrol reset telegram",
           ].join("\n"),
         },
       ])
@@ -441,6 +524,85 @@ function App({ shutdown }: AppProps) {
         setMessages((current) => [
           ...current,
           { role: "assistant", content: error instanceof Error ? error.message : "Unable to update config." },
+        ])
+        setStatus("Request failed")
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
+    const remoteControlCommand = parseRemoteControlCommand(content)
+    if (remoteControlCommand) {
+      setSubmitting(true)
+      setStatus("Updating remote control…")
+
+      try {
+        if (remoteControlCommand.action === "show") {
+          const response = await requireOK(await fetch(`${API_BASE}/remotecontrol`))
+          const statusPayload = (await response.json()) as RemoteControlStatus
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: formatRemoteControlSummary(statusPayload) },
+          ])
+          setStatus("Connected")
+          return
+        }
+
+        if (remoteControlCommand.action === "status") {
+          const response = await requireOK(await fetch(`${API_BASE}/remotecontrol/providers/telegram`))
+          const statusPayload = (await response.json()) as TelegramRemoteControlStatus
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: formatTelegramRemoteStatus(statusPayload) },
+          ])
+          setStatus("Connected")
+          return
+        }
+
+        if (remoteControlCommand.action === "setup") {
+          const response = await requireOK(
+            await fetch(`${API_BASE}/remotecontrol/providers/telegram/setup`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ botToken: remoteControlCommand.botToken }),
+            }),
+          )
+          const statusPayload = (await response.json()) as TelegramRemoteControlStatus
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: formatTelegramRemoteStatus(statusPayload) },
+          ])
+          setStatus("Connected")
+          return
+        }
+
+        if (remoteControlCommand.action === "disable") {
+          const response = await requireOK(
+            await fetch(`${API_BASE}/remotecontrol/providers/telegram/disable`, { method: "POST" }),
+          )
+          const statusPayload = (await response.json()) as TelegramRemoteControlStatus
+          setMessages((current) => [
+            ...current,
+            { role: "assistant", content: formatTelegramRemoteStatus(statusPayload) },
+          ])
+          setStatus("Connected")
+          return
+        }
+
+        const response = await requireOK(
+          await fetch(`${API_BASE}/remotecontrol/providers/telegram/reset`, { method: "POST" }),
+        )
+        const statusPayload = (await response.json()) as TelegramRemoteControlStatus
+        setMessages((current) => [
+          ...current,
+          { role: "assistant", content: formatTelegramRemoteStatus(statusPayload) },
+        ])
+        setStatus("Connected")
+      } catch (error) {
+        setMessages((current) => [
+          ...current,
+          { role: "assistant", content: error instanceof Error ? error.message : "Unable to update remote control." },
         ])
         setStatus("Request failed")
       } finally {

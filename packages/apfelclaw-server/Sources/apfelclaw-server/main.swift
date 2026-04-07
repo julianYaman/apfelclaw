@@ -10,6 +10,9 @@ extension ConversationTurnResponse: Content {}
 extension StreamEvent: Content {}
 extension EditableAppConfig: Content {}
 extension EditableAppConfigUpdate: Content {}
+extension RemoteControlStatus: Content {}
+extension TelegramRemoteControlStatus: Content {}
+extension TelegramRemoteControlSetupRequest: Content {}
 
 private struct CreateSessionRequest: Content {
     let title: String?
@@ -42,10 +45,12 @@ struct ApfelClawServerMain {
         do {
             try await app.execute()
             signalHandler.cancel()
+            bootstrap.telegramRemoteControlProvider.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
             try? await app.asyncShutdown()
         } catch {
             signalHandler.cancel()
+            bootstrap.telegramRemoteControlProvider.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
             try? await app.asyncShutdown()
             throw error
@@ -77,6 +82,41 @@ struct ApfelClawServerMain {
                     "summary": tool.summary,
                     "description": tool.description,
                 ]
+            }
+        }
+
+        app.get("remotecontrol") { _ async in
+            await bootstrap.remoteControlService.current()
+        }
+
+        app.get("remotecontrol", "providers", "telegram") { _ async in
+            await bootstrap.remoteControlService.telegramStatus()
+        }
+
+        app.post("remotecontrol", "providers", "telegram", "setup") { req async throws in
+            let body = try req.content.decode(TelegramRemoteControlSetupRequest.self)
+            do {
+                return try await bootstrap.remoteControlService.setupTelegram(botToken: body.botToken)
+            } catch let error as AppError {
+                throw Abort(.badRequest, reason: error.localizedDescription)
+            }
+        }
+
+        app.post("remotecontrol", "providers", "telegram", "disable") { _ async throws in
+            do {
+                return try await bootstrap.remoteControlService.disableTelegram()
+            } catch let error as AppError {
+                throw Abort(.badRequest, reason: error.localizedDescription)
+            }
+        }
+
+        app.post("remotecontrol", "providers", "telegram", "reset") { _ async throws in
+            do {
+                let status = try await bootstrap.remoteControlService.resetTelegram()
+                try bootstrap.memoryStore.deleteRemoteSessions(provider: "telegram")
+                return status
+            } catch let error as AppError {
+                throw Abort(.badRequest, reason: error.localizedDescription)
             }
         }
 
@@ -212,6 +252,9 @@ private struct ServerBootstrap {
     let conversationService: ConversationService
     let eventHub: SessionEventHub
     let apfelManager: ApfelManager
+    let remoteControlService: RemoteControlService
+    let telegramRemoteControlProvider: TelegramRemoteControlProvider
+    let memoryStore: MemoryStore
 
     static func make() async throws -> ServerBootstrap {
         let directories = try AppDirectories()
@@ -243,12 +286,26 @@ private struct ServerBootstrap {
             toolRuntime: toolRuntime,
             eventHub: eventHub
         )
+        let commandService = CommandService(configService: configService, conversationService: conversationService)
+        let remoteControlSettingsStore = RemoteControlSettingsStore(directories: directories)
+        let remoteControlService = try RemoteControlService(settingsStore: remoteControlSettingsStore)
+        let telegramRemoteControlProvider = TelegramRemoteControlProvider(
+            remoteControlService: remoteControlService,
+            commandService: commandService,
+            conversationService: conversationService,
+            memoryStore: memoryStore,
+            debugEnabled: { await configService.currentAppConfig().debug }
+        )
+        telegramRemoteControlProvider.start()
         return ServerBootstrap(
             configService: configService,
             toolRuntime: toolRuntime,
             conversationService: conversationService,
             eventHub: eventHub,
-            apfelManager: apfelManager
+            apfelManager: apfelManager,
+            remoteControlService: remoteControlService,
+            telegramRemoteControlProvider: telegramRemoteControlProvider,
+            memoryStore: memoryStore
         )
     }
 }

@@ -81,6 +81,18 @@ public final class MemoryStore: @unchecked Sendable {
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         );
         """)
+
+        try execute("""
+        CREATE TABLE IF NOT EXISTS remote_session_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            remote_id TEXT NOT NULL,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(provider, remote_id),
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
+        """)
     }
 
     @discardableResult
@@ -212,6 +224,58 @@ public final class MemoryStore: @unchecked Sendable {
             payload: Self.columnText(statement, index: 2),
             createdAt: Self.columnText(statement, index: 3)
         )
+    }
+
+    public func remoteSessionID(provider: String, remoteID: String) throws -> Int64? {
+        let sql = """
+        SELECT session_id
+        FROM remote_session_mappings
+        WHERE provider = ? AND remote_id = ?
+        LIMIT 1;
+        """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_text(statement, 1, provider, -1, transientDestructor)
+        sqlite3_bind_text(statement, 2, remoteID, -1, transientDestructor)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return nil
+        }
+
+        return sqlite3_column_int64(statement, 0)
+    }
+
+    public func upsertRemoteSession(provider: String, remoteID: String, sessionID: Int64) throws {
+        let sql = """
+        INSERT INTO remote_session_mappings (provider, remote_id, session_id, created_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(provider, remote_id)
+        DO UPDATE SET session_id = excluded.session_id;
+        """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_text(statement, 1, provider, -1, transientDestructor)
+        sqlite3_bind_text(statement, 2, remoteID, -1, transientDestructor)
+        sqlite3_bind_int64(statement, 3, sessionID)
+        sqlite3_bind_text(statement, 4, Self.timestamp, -1, transientDestructor)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppError.message("Unable to upsert remote session mapping.")
+        }
+    }
+
+    public func deleteRemoteSessions(provider: String) throws {
+        let sql = "DELETE FROM remote_session_mappings WHERE provider = ?;"
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_text(statement, 1, provider, -1, transientDestructor)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppError.message("Unable to delete remote session mappings.")
+        }
     }
 
     private func execute(_ sql: String) throws {
