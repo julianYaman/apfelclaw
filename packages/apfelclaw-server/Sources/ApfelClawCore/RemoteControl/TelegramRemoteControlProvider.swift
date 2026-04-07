@@ -1,6 +1,8 @@
 import Foundation
 
 public final class TelegramRemoteControlProvider: @unchecked Sendable {
+    static let typingHeartbeatIntervalNanoseconds: UInt64 = 4_000_000_000
+
     private let remoteControlService: RemoteControlService
     private let commandService: CommandService
     private let conversationService: ConversationService
@@ -117,6 +119,13 @@ public final class TelegramRemoteControlProvider: @unchecked Sendable {
                 return
             }
 
+            let typingTask = Self.startTypingHeartbeat(
+                botToken: config.botToken,
+                chatID: message.chat.id,
+                debugEnabled: debugEnabled
+            )
+            defer { typingTask.cancel() }
+
             let response = try await conversationService.sendMessage(
                 sessionID: sessionID,
                 userInput: text,
@@ -133,6 +142,38 @@ public final class TelegramRemoteControlProvider: @unchecked Sendable {
                 chatID: message.chat.id,
                 text: error.localizedDescription
             )
+        }
+    }
+
+    static func startTypingHeartbeat(
+        botToken: String,
+        chatID: Int64,
+        intervalNanoseconds: UInt64 = typingHeartbeatIntervalNanoseconds,
+        debugEnabled: @escaping @Sendable () async -> Bool,
+        sendChatAction: @escaping @Sendable (_ botToken: String, _ chatID: Int64) async throws -> Void = { botToken, chatID in
+            try await TelegramRemoteControlAPI.sendChatAction(botToken: botToken, chatID: chatID, action: "typing")
+        }
+    ) -> Task<Void, Never> {
+        Task {
+            while Task.isCancelled == false {
+                do {
+                    try await sendChatAction(botToken, chatID)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    if await debugEnabled() {
+                        print("[debug][telegram] typing_error=\(error.localizedDescription)")
+                    }
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: intervalNanoseconds)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    return
+                }
+            }
         }
     }
 
@@ -176,6 +217,16 @@ enum TelegramRemoteControlAPI {
         let _: TelegramAPIEnvelope<TelegramSendMessageResult> = try await request(
             botToken: botToken,
             method: "sendMessage",
+            queryItems: [],
+            body: body
+        )
+    }
+
+    static func sendChatAction(botToken: String, chatID: Int64, action: String) async throws {
+        let body = TelegramSendChatActionRequest(chatID: chatID, action: action)
+        let _: TelegramAPIEnvelope<Bool> = try await request(
+            botToken: botToken,
+            method: "sendChatAction",
             queryItems: [],
             body: body
         )
@@ -311,5 +362,15 @@ private struct TelegramSendMessageResult: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case messageID = "message_id"
+    }
+}
+
+private struct TelegramSendChatActionRequest: Encodable {
+    let chatID: Int64
+    let action: String
+
+    private enum CodingKeys: String, CodingKey {
+        case chatID = "chat_id"
+        case action
     }
 }

@@ -83,6 +83,7 @@ The backend owns the Telegram poller. That means:
 
 - setup happens from the TUI
 - message handling happens in the backend
+- Telegram shows a typing indicator while the backend is working on a normal chat request
 - Telegram continues to work after the TUI is closed
 
 ## Storage
