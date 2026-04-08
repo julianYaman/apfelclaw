@@ -22,7 +22,7 @@ The repository is organized as a small monorepo:
 | Path | Description |
 |---|---|
 | `packages/apfelclaw-server` | Swift backend runtime — local API, tool execution, conversation management, and persistence |
-| `apps/tui` | Terminal UI client built with [OpenTUI](https://opentui.dev) and Bun |
+| `apps/tui` | Terminal UI client built with [OpenTUI](https://opentui.com) and Bun |
 | `./apfelclaw` | Convenience launcher script for the backend server |
 
 ## Start the backend server
