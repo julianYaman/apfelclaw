@@ -75,7 +75,7 @@ public final class ApfelManager: @unchecked Sendable {
     private func startServer(executablePath: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = ["--serve", "--host", "127.0.0.1", "--port", "11434"]
+        process.arguments = ["--permissive", "--serve", "--host", "127.0.0.1", "--port", "11434"]
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("apfelclaw-apfel.log")
