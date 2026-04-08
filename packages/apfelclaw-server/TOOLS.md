@@ -38,6 +38,16 @@ Current tools:
   - `timeframe` string, required
   - `limit` integer, optional
 
+## `get_mac_status`
+
+- Purpose: Read current status information from this Mac, such as battery, power source, thermal state, memory, storage, and uptime.
+- Use when: The user asks about this Mac's current health, battery, power, memory, disk space, temperature state, or uptime.
+- Avoid when: The user asks about files, calendar, mail, or anything that requires a shell command rather than direct system status APIs.
+- Read-only: yes
+- Confirmation required: no
+- Parameters:
+  - `sections` array, optional, allowed values: `battery`, `power`, `thermal`, `memory`, `storage`, `uptime`
+
 ## `run_safe_command`
 
 - Purpose: Run one read-only native macOS terminal command from the safe allowlist.

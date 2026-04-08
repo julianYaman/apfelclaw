@@ -314,7 +314,7 @@ func modelClientPreservesCalendarArgumentsFromFencedJSON() {
     let toolCall = ModelClient.extractToolCall(from: content)
 
     #expect(toolCall?.name == "list_calendar_events")
-    #expect(toolCall?.argumentsJSON == #"{\"start_time\":\"2026-04-06T17:52:07+02:00\",\"end_time\":\"2026-04-06T23:59:59+02:00\",\"calendar\":\"personal\"}"#)
+    #expect(toolCall?.argumentsJSON == #"{"start_time":"2026-04-06T17:52:07+02:00","end_time":"2026-04-06T23:59:59+02:00","calendar":"personal"}"#)
 }
 
 @Test
@@ -571,6 +571,7 @@ func toolRegistryExposesRegisteredModules() throws {
 
     #expect(runtime.registry.modules.count == runtime.availableTools.count)
     #expect(runtime.registry.module(named: "list_calendar_events")?.routingMetadata.domain == "calendar")
+    #expect(runtime.registry.module(named: "get_mac_status")?.routingMetadata.domain == "system")
     #expect(runtime.registry.module(named: "run_safe_command")?.routingMetadata.domain == "terminal")
 }
 
@@ -579,6 +580,7 @@ func toolRuntimeOnlyProvidesDeterministicFallbackForSupportedTools() throws {
     let runtime = try ToolRuntime()
 
     #expect(runtime.deterministicFallbackToolCall(named: "list_calendar_events") == nil)
+    #expect(runtime.deterministicFallbackToolCall(named: "get_mac_status")?.name == "get_mac_status")
     #expect(runtime.deterministicFallbackToolCall(named: "list_recent_mail")?.name == "list_recent_mail")
     #expect(runtime.deterministicFallbackToolCall(named: "find_files") == nil)
     #expect(runtime.deterministicFallbackToolCall(named: "get_file_info") == nil)

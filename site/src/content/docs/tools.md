@@ -1,6 +1,6 @@
 ---
 title: Tools
-description: Tool catalog — file search, file info, calendar events, safe commands, and recent mail.
+description: Tool catalog — file search, file info, calendar events, Mac status, safe commands, and recent mail.
 order: 3
 ---
 
@@ -90,6 +90,36 @@ Read upcoming events from the user's calendars via EventKit.
 - "Any events this week?"
 
 > This tool supports **follow-up reuse**: if the user asks about "today" and then follows up with "what about tomorrow?", the Intent Router can reuse this tool without re-classifying from scratch.
+
+---
+
+## get_mac_status
+
+Read current status information from this Mac.
+
+| Property | Value |
+|---|---|
+| Domain | `system` |
+| Read-only | Yes |
+| Follow-up reuse | Yes |
+| Deterministic fallback | Yes |
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `sections` | array | No | Optional section list. Allowed values: `battery`, `power`, `thermal`, `memory`, `storage`, `uptime`. Omit for an overview |
+
+**Use when:** The user asks about this Mac's current battery, power, thermal state, memory, disk space, or uptime.
+
+**Avoid when:** The question is about files, calendar, mail, or requires a shell command rather than direct system status APIs.
+
+**Examples:**
+- "How much battery do I have left?"
+- "What's my Mac status?"
+- "How much free disk space do I have?"
+
+> This tool supports **follow-up reuse**: if the user first asks for an overview and then follows up with a narrower system-health question, the router can reuse this tool.
 
 ---
 

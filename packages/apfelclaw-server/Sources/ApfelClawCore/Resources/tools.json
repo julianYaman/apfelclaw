@@ -88,6 +88,31 @@
       }
     },
     {
+      "name": "get_mac_status",
+      "description": "Read current status information from this Mac, such as battery, power source, thermal state, memory, storage, and uptime.",
+      "use_when": "The user asks about this Mac's current health, battery, power, memory, disk space, temperature state, or uptime.",
+      "avoid_when": "The user asks about files, calendar, mail, or anything that requires a shell command rather than direct system status APIs.",
+      "examples": [
+        "How much battery do I have left?",
+        "What's my Mac status?",
+        "How much free disk space do I have?"
+      ],
+      "returns": "Structured live status data for the requested Mac status sections.",
+      "readonly": true,
+      "requires_confirmation": false,
+      "result_format": "mac_status",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "description": "Optional list of status sections to read. Allowed values: battery, power, thermal, memory, storage, uptime. Omit for an overview."
+          }
+        },
+        "required": []
+      }
+    },
+    {
       "name": "run_safe_command",
       "description": "Run one read-only native macOS terminal command from the safe allowlist.",
       "use_when": "A read-only shell command is the most direct way to answer the question and the command is in the allowlist.",

@@ -7,6 +7,7 @@
 ## Build
 
 - Don't run any build command.
+- Test commands are allowed when they help verify changes.
 
 ## Development
 

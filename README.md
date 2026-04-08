@@ -80,7 +80,7 @@ API endpoints:
 
 HTTP response headers:
 
-- `Server: apfelclaw-server/0.1.0`
+- `Server: apfelclaw-server/0.2.0`
 
 Config API:
 

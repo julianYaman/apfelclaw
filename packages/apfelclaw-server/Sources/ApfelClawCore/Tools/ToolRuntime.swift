@@ -89,6 +89,8 @@ public final class ToolRegistry: @unchecked Sendable {
             return FindFilesToolModule(definition: definition)
         case "get_file_info":
             return GetFileInfoToolModule(definition: definition)
+        case "get_mac_status":
+            return MacStatusToolModule(definition: definition)
         case "list_calendar_events":
             return CalendarEventsToolModule(definition: definition)
         case "run_safe_command":
@@ -378,6 +380,230 @@ private struct GetFileInfoToolModule: ToolModule {
             allowed: ["path"],
             toolName: definition.name
         )
+    }
+}
+
+private struct MacStatusToolModule: ToolModule {
+    let definition: ToolDefinition
+    let routingMetadata = ToolRoutingMetadata(domain: "system", supportsFollowUpReuse: true, followUpSummaryStyle: .generic)
+    let supportsDeterministicFallbackInvocation = true
+    private let macStatusTools = MacStatusTools()
+
+    func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
+        let sections = try resolvedSections(arguments: arguments)
+        return try macStatusTools.readStatus(sections: sections)
+    }
+
+    func summarizeResult(_ result: String, context: ToolPresentationContext) -> String? {
+        guard let object = ToolModuleSupport.decodeObject(result) else {
+            return nil
+        }
+
+        let sections = requestedSections(from: object)
+        guard sections.isEmpty == false else {
+            return nil
+        }
+
+        let lines = sections.compactMap { section -> String? in
+            switch section {
+            case .battery:
+                return summarizeBattery(object[section.rawValue]?.objectValue)
+            case .power:
+                return summarizePower(object[section.rawValue]?.objectValue)
+            case .thermal:
+                return summarizeThermal(object[section.rawValue]?.objectValue)
+            case .memory:
+                return summarizeMemory(object[section.rawValue]?.objectValue)
+            case .storage:
+                return summarizeStorage(object[section.rawValue]?.objectValue)
+            case .uptime:
+                return summarizeUptime(object[section.rawValue]?.objectValue)
+            }
+        }
+
+        guard lines.isEmpty == false else {
+            return nil
+        }
+
+        if lines.count == 1 {
+            return lines[0]
+        }
+
+        return "Mac status:\n" + lines.map { "- \($0)" }.joined(separator: "\n")
+    }
+
+    func summarizeLastResult(_ result: String, context: ToolPresentationContext) -> ToolResultSnapshot? {
+        guard let object = ToolModuleSupport.decodeObject(result) else {
+            return nil
+        }
+
+        let sections = requestedSections(from: object).map(\.rawValue)
+        let sectionSummary = sections.isEmpty ? "overview" : sections.joined(separator: ", ")
+        let scope: [String: JSONValue] = [
+            "sections": .array(sections.map(JSONValue.string))
+        ]
+
+        return ToolResultSnapshot(
+            toolName: definition.name,
+            domain: routingMetadata.domain,
+            scopeSummary: "Previous Mac status lookup covered: \(sectionSummary).",
+            machineReadableScope: .object(scope)
+        )
+    }
+
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        let arguments = try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["sections"],
+            toolName: definition.name
+        )
+
+        let sections = try ToolModuleSupport.stringArray(arguments["sections"], key: "sections")
+        let invalidSections = sections.filter { MacStatusTools.Section(rawValue: $0) == nil }
+        guard invalidSections.isEmpty else {
+            let validSections = MacStatusTools.Section.allCases.map(\.rawValue).joined(separator: ", ")
+            throw AppError.message(
+                "Tool '\(definition.name)' received unsupported section(s): \(invalidSections.joined(separator: ", ")). Use only: \(validSections)."
+            )
+        }
+
+        guard sections.isEmpty == false else {
+            return arguments
+        }
+
+        let canonicalSections = deduplicatedSections(from: sections)
+        return ["sections": .array(canonicalSections.map { .string($0.rawValue) })]
+    }
+
+    private func resolvedSections(arguments: [String: JSONValue]) throws -> [MacStatusTools.Section] {
+        let rawSections = try ToolModuleSupport.stringArray(arguments["sections"], key: "sections")
+        return deduplicatedSections(from: rawSections)
+    }
+
+    private func deduplicatedSections(from rawSections: [String]) -> [MacStatusTools.Section] {
+        var seen: Set<MacStatusTools.Section> = []
+        var sections: [MacStatusTools.Section] = []
+
+        for rawSection in rawSections {
+            guard let section = MacStatusTools.Section(rawValue: rawSection), seen.insert(section).inserted else {
+                continue
+            }
+            sections.append(section)
+        }
+
+        return sections
+    }
+
+    private func requestedSections(from object: [String: JSONValue]) -> [MacStatusTools.Section] {
+        let rawSections = object["requested_sections"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        return deduplicatedSections(from: rawSections)
+    }
+
+    private func summarizeBattery(_ object: [String: JSONValue]?) -> String? {
+        guard let object else {
+            return nil
+        }
+
+        if object["has_battery"]?.boolValue == false {
+            let source = object["power_source"]?.stringValue ?? "unknown power"
+            return "No internal battery detected. Current power source: \(source)."
+        }
+
+        var parts: [String] = []
+        if let percentage = object["percentage"]?.intValue {
+            parts.append("Battery at \(percentage)%")
+        } else {
+            parts.append("Battery status available")
+        }
+        if let isCharging = object["is_charging"]?.boolValue {
+            parts.append(isCharging ? "charging" : "not charging")
+        }
+        if let timeRemaining = object["time_remaining_minutes"]?.intValue {
+            parts.append("about \(formatDuration(minutes: timeRemaining)) remaining")
+        } else if let timeToFull = object["time_to_full_charge_minutes"]?.intValue {
+            parts.append("about \(formatDuration(minutes: timeToFull)) until full")
+        }
+        return parts.joined(separator: ", ") + "."
+    }
+
+    private func summarizePower(_ object: [String: JSONValue]?) -> String? {
+        guard let object, let source = object["source"]?.stringValue else {
+            return nil
+        }
+
+        if let isCharging = object["is_charging"]?.boolValue, object["has_battery"]?.boolValue == true {
+            return "Power source: \(source). Battery is \(isCharging ? "charging" : "not charging")."
+        }
+        return "Power source: \(source)."
+    }
+
+    private func summarizeThermal(_ object: [String: JSONValue]?) -> String? {
+        guard let state = object?["state"]?.stringValue else {
+            return nil
+        }
+        return "Thermal state is \(state)."
+    }
+
+    private func summarizeMemory(_ object: [String: JSONValue]?) -> String? {
+        guard let object else {
+            return nil
+        }
+
+        var parts: [String] = []
+        if let physicalMemory = object["physical_memory_bytes"]?.numberValue {
+            parts.append("Physical memory: \(formatBytes(physicalMemory))")
+        }
+        if let availableMemory = object["available_memory_bytes"]?.numberValue {
+            parts.append("available: \(formatBytes(availableMemory))")
+        }
+        guard parts.isEmpty == false else {
+            return nil
+        }
+        return parts.joined(separator: ", ") + "."
+    }
+
+    private func summarizeStorage(_ object: [String: JSONValue]?) -> String? {
+        guard let object else {
+            return nil
+        }
+
+        let total = object["total_bytes"]?.numberValue.map(formatBytes)
+        let free = object["free_bytes"]?.numberValue.map(formatBytes)
+        switch (total, free) {
+        case let (total?, free?):
+            return "Startup disk free space: \(free) of \(total)."
+        case let (_, free?):
+            return "Startup disk free space: \(free)."
+        default:
+            return nil
+        }
+    }
+
+    private func summarizeUptime(_ object: [String: JSONValue]?) -> String? {
+        guard let humanReadable = object?["human_readable"]?.stringValue else {
+            return nil
+        }
+        return "System uptime: \(humanReadable)."
+    }
+
+    private func formatBytes(_ bytes: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB, .useTB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    private func formatDuration(minutes: Int) -> String {
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        if hours == 0 {
+            return "\(remainingMinutes) min"
+        }
+        if remainingMinutes == 0 {
+            return "\(hours) hr"
+        }
+        return "\(hours) hr \(remainingMinutes) min"
     }
 }
 

@@ -69,6 +69,64 @@ func runtimeAcceptsCalendarTimeRangeAlias() async throws {
 }
 
 @Test
+func macStatusToolRejectsUnsupportedSections() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "get_mac_status"))
+
+    do {
+        _ = try module.validatedArguments(from: #"{"sections":["battery","cpu"]}"#)
+        Issue.record("Expected unsupported Mac status sections to fail.")
+    } catch is AppError {
+    }
+}
+
+@Test
+func macStatusToolDeduplicatesSections() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "get_mac_status"))
+
+    let arguments = try module.validatedArguments(from: #"{"sections":["battery","memory","battery"]}"#)
+
+    #expect(arguments["sections"]?.arrayValue?.count == 2)
+    #expect(arguments["sections"]?.arrayValue?.first?.stringValue == "battery")
+    #expect(arguments["sections"]?.arrayValue?.last?.stringValue == "memory")
+}
+
+@Test
+func macStatusSummaryFormatsOverviewPayload() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "get_mac_status"))
+
+    let result = #"{"requested_sections":["battery","thermal","uptime"],"battery":{"has_battery":true,"percentage":84,"is_charging":false,"time_remaining_minutes":132},"thermal":{"state":"nominal"},"uptime":{"seconds":98765,"human_readable":"1 day, 3 hours"}}"#
+
+    let summary = module.summarizeResult(
+        result,
+        context: ToolPresentationContext(referenceDate: Date(), timeZone: .current)
+    )
+
+    #expect(summary?.contains("Battery at 84%") == true)
+    #expect(summary?.contains("Thermal state is nominal.") == true)
+    #expect(summary?.contains("System uptime: 1 day, 3 hours.") == true)
+}
+
+@Test
+func macStatusSnapshotTracksRequestedSections() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "get_mac_status"))
+
+    let result = #"{"requested_sections":["storage","uptime"],"storage":{"path":"/","total_bytes":1000,"free_bytes":400},"uptime":{"seconds":3600,"human_readable":"1 hour"}}"#
+
+    let snapshot = module.summarizeLastResult(
+        result,
+        context: ToolPresentationContext(referenceDate: Date(), timeZone: .current)
+    )
+
+    #expect(snapshot?.domain == "system")
+    #expect(snapshot?.scopeSummary.contains("storage, uptime") == true)
+    #expect(snapshot?.machineReadableScope?.objectValue?["sections"]?.arrayValue?.count == 2)
+}
+
+@Test
 func calendarToolsResolveNaturalLanguageTimeframes() throws {
     let tools = CalendarTools()
     let formatter = ISO8601DateFormatter()
