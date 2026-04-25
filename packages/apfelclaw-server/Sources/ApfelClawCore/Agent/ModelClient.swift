@@ -1,7 +1,8 @@
 import Foundation
 
 public enum CompletionMode: Sendable {
-    case textOnly
+    case structuredText
+    case userFacingText
     case toolAware
 }
 
@@ -107,13 +108,20 @@ public final class ModelClient: ModelCompleting, Sendable {
         let content = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         switch mode {
-        case .textOnly:
+        case .structuredText:
             if let content, content.isEmpty == false {
                 return CompletionOutcome(text: content, toolCall: nil)
             }
             if let toolCalls = choice.message.toolCalls,
                let serializedToolCalls = Self.serializeToolCalls(toolCalls) {
                 return CompletionOutcome(text: serializedToolCalls, toolCall: nil)
+            }
+        case .userFacingText:
+            if let content, content.isEmpty == false {
+                return CompletionOutcome(text: content, toolCall: nil)
+            }
+            if choice.message.toolCalls?.isEmpty == false {
+                throw AppError.message("apfel returned tool calls when plain text was expected.")
             }
         case .toolAware:
             if let toolCall = choice.message.toolCalls?.first {

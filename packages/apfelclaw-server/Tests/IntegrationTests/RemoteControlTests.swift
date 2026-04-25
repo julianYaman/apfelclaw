@@ -14,6 +14,7 @@ func remoteControlServicePersistsVerifiedTelegramSetup() async throws {
 
     #expect(status.enabled == true)
     #expect(status.pollingEnabled == true)
+    #expect(status.autoApproveTools == false)
     #expect(status.hasBotToken == true)
     #expect(status.botUsername == "apfelclaw_bot")
     #expect(status.approvedUserID == nil)
@@ -26,6 +27,7 @@ func remoteControlServicePersistsVerifiedTelegramSetup() async throws {
     let reloadedStatus = await reloaded.telegramStatus()
 
     #expect(reloadedStatus.enabled == true)
+    #expect(reloadedStatus.autoApproveTools == false)
     #expect(reloadedStatus.botUsername == "apfelclaw_bot")
     #expect(reloadedStatus.approvedUserID == nil)
     #expect(reloadedStatus.linking == true)

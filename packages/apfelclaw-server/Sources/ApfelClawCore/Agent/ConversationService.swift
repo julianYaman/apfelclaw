@@ -77,6 +77,7 @@ public final class ConversationService: @unchecked Sendable {
         )
 
         let recentMessages = try memoryStore.listMessages(sessionID: sessionID, limit: 20)
+        let sessionSummary = config.memoryEnabled ? try memoryStore.latestSummary(sessionID: sessionID) : nil
         let lastToolCall = try memoryStore.latestToolCall(sessionID: sessionID)
         let intentRouterDebugLog: (@Sendable (String) -> Void)? = config.debug ? { @Sendable (message: String) in
             print(message)
@@ -84,6 +85,7 @@ public final class ConversationService: @unchecked Sendable {
         let routing = try await IntentRouter.route(
             messages: recentMessages,
             userInput: trimmed,
+            sessionSummary: sessionSummary,
             lastToolCall: lastToolCall,
             toolRegistry: toolRuntime.registry,
             modelClient: modelClient,
@@ -103,6 +105,7 @@ public final class ConversationService: @unchecked Sendable {
             let toolMessages = buildToolCallPrompt(
                 from: recentMessages,
                 config: config,
+                sessionSummary: sessionSummary,
                 selectedTool: selectedTool,
                 now: requestTime,
                 timeZone: requestTimeZone
@@ -118,6 +121,7 @@ public final class ConversationService: @unchecked Sendable {
                     debugEnabled: config.debug,
                     userInput: trimmed,
                     autoApproveTools: autoApproveTools,
+                    memoryEnabled: config.memoryEnabled,
                     requestTime: requestTime,
                     requestTimeZone: requestTimeZone
                 )
@@ -135,42 +139,36 @@ public final class ConversationService: @unchecked Sendable {
                     debugEnabled: config.debug,
                     userInput: trimmed,
                     autoApproveTools: autoApproveTools,
+                    memoryEnabled: config.memoryEnabled,
                     requestTime: requestTime,
                     requestTimeZone: requestTimeZone
                 )
             }
 
             if let text = outcome.text {
-                try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: text)
-                eventHub?.publish(
-                    StreamEvent(
-                        type: "message.created",
-                        sessionID: sessionID,
-                        message: SessionMessage(role: "assistant", content: text)
-                    )
-                )
+                try persistAssistantMessage(sessionID: sessionID, content: text, memoryEnabled: config.memoryEnabled)
                 return ConversationTurnResponse(sessionID: sessionID, assistantMessage: text, toolCall: nil)
             }
 
             throw AppError.message("The selected tool step returned neither a valid tool call nor clarification text.")
         }
 
+        if routing.action == .clarify {
+            let clarification = Self.clarificationMessage()
+            try persistAssistantMessage(sessionID: sessionID, content: clarification, memoryEnabled: config.memoryEnabled)
+            return ConversationTurnResponse(sessionID: sessionID, assistantMessage: clarification, toolCall: nil)
+        }
+
         let promptMessages = buildChatPrompt(
             from: recentMessages,
             config: config,
+            sessionSummary: sessionSummary,
             now: requestTime,
             timeZone: requestTimeZone
         )
-        let outcome = try await modelClient.complete(messages: promptMessages, tools: [], mode: .textOnly)
+        let outcome = try await modelClient.complete(messages: promptMessages, tools: [], mode: .userFacingText)
         if let text = outcome.text {
-            try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: text)
-            eventHub?.publish(
-                StreamEvent(
-                    type: "message.created",
-                    sessionID: sessionID,
-                    message: SessionMessage(role: "assistant", content: text)
-                )
-            )
+            try persistAssistantMessage(sessionID: sessionID, content: text, memoryEnabled: config.memoryEnabled)
             return ConversationTurnResponse(sessionID: sessionID, assistantMessage: text, toolCall: nil)
         }
 
@@ -185,6 +183,7 @@ public final class ConversationService: @unchecked Sendable {
         debugEnabled: Bool,
         userInput: String,
         autoApproveTools: Bool,
+        memoryEnabled: Bool,
         requestTime: Date,
         requestTimeZone: TimeZone
     ) async throws -> ConversationTurnResponse {
@@ -212,15 +211,9 @@ public final class ConversationService: @unchecked Sendable {
                 approved: false,
                 payload: deniedPayload
             )
-            let assistantMessage = "Tool use denied."
-            try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: assistantMessage)
-            eventHub?.publish(
-                StreamEvent(
-                    type: "message.created",
-                    sessionID: sessionID,
-                    message: SessionMessage(role: "assistant", content: assistantMessage)
-                )
-            )
+            let toolLabel = selectedTool?.summary ?? toolCall.name
+            let assistantMessage = "I needed to use \(toolLabel) to answer that, but tool approval was not granted. If you want, enable tool approval and ask again."
+            try persistAssistantMessage(sessionID: sessionID, content: assistantMessage, memoryEnabled: memoryEnabled)
             return ConversationTurnResponse(sessionID: sessionID, assistantMessage: assistantMessage, toolCall: summary)
         }
 
@@ -232,15 +225,9 @@ public final class ConversationService: @unchecked Sendable {
                 context: ToolExecutionContext(referenceDate: requestTime, timeZone: requestTimeZone)
             )
         } catch {
-            let assistantMessage = "Tool execution failed: \(error.localizedDescription)"
-            try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: assistantMessage)
-            eventHub?.publish(
-                StreamEvent(
-                    type: "message.created",
-                    sessionID: sessionID,
-                    message: SessionMessage(role: "assistant", content: assistantMessage)
-                )
-            )
+            let toolLabel = selectedTool?.summary ?? toolCall.name
+            let assistantMessage = "I tried to use \(toolLabel), but it failed: \(error.localizedDescription). Please try again or rephrase the request."
+            try persistAssistantMessage(sessionID: sessionID, content: assistantMessage, memoryEnabled: memoryEnabled)
             return ConversationTurnResponse(sessionID: sessionID, assistantMessage: assistantMessage, toolCall: summary)
         }
 
@@ -290,37 +277,35 @@ public final class ConversationService: @unchecked Sendable {
             )
 
             let messages = priorMessages + [assistantToolMessage, toolMessage, followUp]
-            let outcome = try await modelClient.complete(messages: messages, tools: [], mode: .textOnly)
+            let outcome = try await modelClient.complete(messages: messages, tools: [], mode: .userFacingText)
             guard let text = outcome.text else {
                 throw AppError.message("The tool result summary did not return text.")
             }
             assistantMessage = text
         }
 
-        try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: assistantMessage)
-        eventHub?.publish(
-            StreamEvent(
-                type: "message.created",
-                sessionID: sessionID,
-                message: SessionMessage(role: "assistant", content: assistantMessage)
-            )
-        )
+        try persistAssistantMessage(sessionID: sessionID, content: assistantMessage, memoryEnabled: memoryEnabled)
         return ConversationTurnResponse(sessionID: sessionID, assistantMessage: assistantMessage, toolCall: summary)
     }
 
     private func buildChatPrompt(
         from messages: [(role: String, content: String)],
         config: AppConfig,
+        sessionSummary: String?,
         now: Date,
         timeZone: TimeZone
     ) -> [ChatMessage] {
         let systemPrompt = Self.systemPrompt(
             assistantName: config.assistantName,
+            userName: config.userName,
             now: now,
             timeZone: timeZone
         )
 
         var promptMessages: [ChatMessage] = [ChatMessage(role: "system", content: systemPrompt)]
+        if let sessionSummary = sessionSummary?.trimmingCharacters(in: .whitespacesAndNewlines), sessionSummary.isEmpty == false {
+            promptMessages.append(ChatMessage(role: "system", content: "Session summary:\n\(sessionSummary)"))
+        }
         promptMessages.append(contentsOf: messages.map { ChatMessage(role: $0.role, content: $0.content) })
         return promptMessages
     }
@@ -328,24 +313,30 @@ public final class ConversationService: @unchecked Sendable {
     private func buildToolCallPrompt(
         from messages: [(role: String, content: String)],
         config: AppConfig,
+        sessionSummary: String?,
         selectedTool: ToolDefinition,
         now: Date,
         timeZone: TimeZone
     ) -> [ChatMessage] {
         let systemPrompt = Self.toolCallSystemPrompt(
             assistantName: config.assistantName,
+            userName: config.userName,
             selectedTool: selectedTool,
             now: now,
             timeZone: timeZone
         )
 
         var promptMessages: [ChatMessage] = [ChatMessage(role: "system", content: systemPrompt)]
+        if let sessionSummary = sessionSummary?.trimmingCharacters(in: .whitespacesAndNewlines), sessionSummary.isEmpty == false {
+            promptMessages.append(ChatMessage(role: "system", content: "Session summary:\n\(sessionSummary)"))
+        }
         promptMessages.append(contentsOf: messages.map { ChatMessage(role: $0.role, content: $0.content) })
         return promptMessages
     }
 
     static func systemPrompt(
         assistantName: String,
+        userName: String,
         now: Date,
         timeZone: TimeZone
     ) -> String {
@@ -359,16 +350,19 @@ public final class ConversationService: @unchecked Sendable {
 
         return """
         You are \(assistantName), a local macOS assistant running inside apfelclaw.
+        The user's preferred name is \(userName).
         Backend version: \(AppVersion.current).
         Keep answers concise and practical.
         Reference time for this request: \(humanFormatter.string(from: now)) (\(isoFormatter.string(from: now))).
         Treat that reference time and timezone as the source of truth for "today", "tomorrow", and other relative time phrases.
         Make sure that data like dates are always human-readable and in the timezone of the user.
+        Do not guess personal, local, or current data. If a reliable answer needs tool-backed lookup, say that clearly instead of inventing details.
         """
     }
 
     static func toolCallSystemPrompt(
         assistantName: String,
+        userName: String,
         selectedTool: ToolDefinition,
         now: Date,
         timeZone: TimeZone
@@ -385,6 +379,7 @@ public final class ConversationService: @unchecked Sendable {
 
         return """
         You are \(assistantName), a local macOS assistant running inside apfelclaw.
+        The user's preferred name is \(userName).
         The router already selected the tool "\(selectedTool.name)" for this turn.
         Your job is to call exactly that tool using only its documented argument keys.
         Allowed argument keys for this tool: \(allowedKeys).
@@ -405,6 +400,71 @@ public final class ConversationService: @unchecked Sendable {
             return nil
         }
         return toolCall
+    }
+
+    private func persistAssistantMessage(sessionID: Int64, content: String, memoryEnabled: Bool) throws {
+        try memoryStore.appendMessage(sessionID: sessionID, role: "assistant", content: content)
+        eventHub?.publish(
+            StreamEvent(
+                type: "message.created",
+                sessionID: sessionID,
+                message: SessionMessage(role: "assistant", content: content)
+            )
+        )
+
+        guard memoryEnabled else {
+            return
+        }
+
+        try refreshSessionSummary(sessionID: sessionID)
+    }
+
+    private func refreshSessionSummary(sessionID: Int64) throws {
+        let messages = try memoryStore.listMessages(sessionID: sessionID, limit: 200)
+        guard let summary = summarizedHistory(from: messages) else {
+            try memoryStore.deleteSessionSummary(sessionID: sessionID)
+            return
+        }
+        try memoryStore.replaceSessionSummary(sessionID: sessionID, summary: summary)
+    }
+
+    private func summarizedHistory(from messages: [(role: String, content: String)]) -> String? {
+        let recentWindow = 12
+        guard messages.count > recentWindow else {
+            return nil
+        }
+
+        let olderMessages = Array(messages.dropLast(recentWindow))
+        let sample = olderMessages.suffix(8)
+        var lines: [String] = []
+        var remaining = 1_200
+
+        for message in sample {
+            let normalized = message.content
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalized.isEmpty == false else {
+                continue
+            }
+
+            let capped = String(normalized.prefix(180))
+            let line = "\(message.role): \(capped)"
+            guard line.count <= remaining else {
+                break
+            }
+            lines.append(line)
+            remaining -= line.count
+        }
+
+        guard lines.isEmpty == false else {
+            return nil
+        }
+
+        return "Earlier context:\n" + lines.joined(separator: "\n")
+    }
+
+    private static func clarificationMessage() -> String {
+        "I need a bit more detail to answer that reliably. If you want live data from this Mac, tell me what to check, such as your calendar, recent mail, files, or Mac status."
     }
 
     private func escapeForJSON(_ value: String) -> String {

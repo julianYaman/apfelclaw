@@ -43,7 +43,7 @@ public actor RemoteControlService {
         config.telegram = TelegramRemoteControlConfig(
             enabled: true,
             pollingEnabled: true,
-            autoApproveTools: true,
+            autoApproveTools: false,
             botToken: trimmed,
             botUsername: identity.username,
             approvedChatID: nil,

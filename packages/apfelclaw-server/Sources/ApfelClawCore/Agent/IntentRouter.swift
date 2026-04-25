@@ -3,6 +3,7 @@ import Foundation
 public enum RoutingAction: String, Codable, Sendable {
     case useTool = "use_tool"
     case answerDirectly = "answer_directly"
+    case clarify = "clarify"
 }
 
 public enum RoutingReasonCode: String, Codable, Sendable {
@@ -49,16 +50,6 @@ private struct RawFollowUpReuseSelection: Codable {
     let reasonCode: String
 }
 
-private struct DirectAnswerOverrideSelection: Codable, Equatable {
-    let toolName: String?
-    let reasonCode: RoutingReasonCode
-}
-
-private struct RawDirectAnswerOverrideSelection: Codable {
-    let toolName: String?
-    let reasonCode: String
-}
-
 private struct LoggedToolPayload: Codable {
     let arguments: String
     let result: String
@@ -75,10 +66,17 @@ private struct RoutingDebugTracePayload: Codable, Sendable {
     let attempts: [RoutingDebugAttempt]
 }
 
+private enum RoutingSelectionStatus: Sendable {
+    case accepted
+    case exhausted
+    case modelError
+}
+
 public enum IntentRouter {
     public static func route(
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord?,
         toolRegistry: ToolRegistry,
         modelClient: any ModelCompleting,
@@ -86,9 +84,10 @@ public enum IntentRouter {
         timeZone: TimeZone,
         debugLog: (@Sendable (String) -> Void)? = nil
     ) async throws -> RoutingDecision {
-        let (selection, classifierAttempts) = try await requestClassifierSelection(
+        let (selection, classifierAttempts, classifierStatus) = try await requestClassifierSelection(
             messages: messages,
             userInput: userInput,
+            sessionSummary: sessionSummary,
             lastToolCall: lastToolCall,
             toolRegistry: toolRegistry,
             modelClient: modelClient,
@@ -104,10 +103,15 @@ public enum IntentRouter {
             return RoutingDecision(action: .useTool, toolName: toolName, reasonCode: selection.reasonCode, debugTrace: renderDebugTrace(debugAttempts))
         }
 
-        let (recovered, followUpAttempts) = try await recoverToolFromFollowUpReuse(
+        if classifierStatus == .modelError {
+            return RoutingDecision(action: .clarify, toolName: nil, reasonCode: .other, debugTrace: renderDebugTrace(debugAttempts))
+        }
+
+        let (recovered, followUpAttempts, followUpStatus) = try await recoverToolFromFollowUpReuse(
             initialSelection: selection,
             messages: messages,
             userInput: userInput,
+            sessionSummary: sessionSummary,
             lastToolCall: lastToolCall,
             toolRegistry: toolRegistry,
             modelClient: modelClient,
@@ -127,48 +131,36 @@ public enum IntentRouter {
             )
         }
 
-        if let selection,
-           selection.action == .answerDirectly {
-            let (verifiedSelection, verificationAttempts) = try await requestDirectAnswerVerificationSelection(
-                messages: messages,
-                userInput: userInput,
-                lastToolCall: lastToolCall,
-                toolRegistry: toolRegistry,
-                modelClient: modelClient,
-                referenceDate: referenceDate,
-                timeZone: timeZone,
-                debugLog: debugLog
+        if selection == nil {
+            return RoutingDecision(
+                action: .clarify,
+                toolName: nil,
+                reasonCode: .other,
+                debugTrace: finalDebugTrace
             )
-            debugAttempts.append(contentsOf: verificationAttempts)
-            let verifiedDebugTrace = renderDebugTrace(debugAttempts)
-
-            if let verifiedSelection,
-               let toolName = verifiedSelection.toolName {
-                return RoutingDecision(
-                    action: .useTool,
-                    toolName: toolName,
-                    reasonCode: verifiedSelection.reasonCode,
-                    debugTrace: verifiedDebugTrace
-                )
-            }
-
-            if let verifiedSelection,
-               verifiedSelection.toolName == nil {
-                return RoutingDecision(
-                    action: .answerDirectly,
-                    toolName: nil,
-                    reasonCode: verifiedSelection.reasonCode,
-                    debugTrace: verifiedDebugTrace
-                )
-            }
         }
 
-        return RoutingDecision(action: .answerDirectly, toolName: nil, reasonCode: selection?.reasonCode ?? .other, debugTrace: renderDebugTrace(debugAttempts))
+        if let selection,
+           selection.action == .answerDirectly {
+            return RoutingDecision(
+                action: .answerDirectly,
+                toolName: nil,
+                reasonCode: selection.reasonCode,
+                debugTrace: finalDebugTrace
+            )
+        }
+
+        if followUpStatus == .modelError {
+            return RoutingDecision(action: .clarify, toolName: nil, reasonCode: .other, debugTrace: finalDebugTrace)
+        }
+
+        return RoutingDecision(action: .clarify, toolName: nil, reasonCode: .other, debugTrace: finalDebugTrace)
     }
 
     static func buildClassifierMessages(
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord?,
         toolRegistry: ToolRegistry,
         referenceDate: Date,
@@ -207,6 +199,7 @@ public enum IntentRouter {
             referenceDate: referenceDate,
             timeZone: timeZone
         )
+        let renderedSessionSummary = renderSessionSummary(sessionSummary)
 
         let system = """
         You are not the assistant. You are the router for apfelclaw.
@@ -227,6 +220,7 @@ public enum IntentRouter {
 
         Small-model rule: greetings and pure chat can be answer_directly. Requests about the user's calendar, mail, files, or current Mac state should prefer use_tool.
         When in doubt between answer_directly and use_tool for local, personal, current, or changing data, prefer use_tool.
+        Final-check rule: if the latest user message on its own clearly asks to read personal, local, or current data, choose use_tool even if earlier messages look conversational.
 
         Examples:
         - "Hello." -> {"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}
@@ -263,6 +257,8 @@ public enum IntentRouter {
         Recent conversation:
         \(transcript)
 
+        \(renderedSessionSummary)
+
         \(lastToolSummary)
 
         Latest user message:
@@ -278,6 +274,7 @@ public enum IntentRouter {
     static func buildFollowUpVerificationMessages(
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord,
         toolRegistry: ToolRegistry,
         referenceDate: Date,
@@ -294,6 +291,7 @@ public enum IntentRouter {
             referenceDate: referenceDate,
             timeZone: timeZone
         )
+        let renderedSessionSummary = renderSessionSummary(sessionSummary)
 
         let system = """
         You are checking whether the user's latest message continues the previous tool-backed request.
@@ -326,85 +324,10 @@ public enum IntentRouter {
         Recent conversation:
         \(transcript)
 
+        \(renderedSessionSummary)
+
         \(lastToolSummary)
 
-        Latest user message:
-        \(userInput)
-        """
-
-        return [
-            ChatMessage(role: "system", content: system),
-            ChatMessage(role: "user", content: user),
-        ]
-    }
-
-    static func buildDirectAnswerVerificationMessages(
-        messages: [(role: String, content: String)],
-        userInput: String,
-        lastToolCall: ToolCallRecord?,
-        toolRegistry: ToolRegistry,
-        referenceDate: Date,
-        timeZone: TimeZone,
-        strict: Bool = false
-    ) -> [ChatMessage] {
-        let toolList = toolRegistry.modules.map { module in
-            var lines = [
-                "- name: \(module.definition.name)",
-                "  domain: \(module.routingMetadata.domain)",
-                "  purpose: \(module.definition.summary)",
-            ]
-            if let useWhen = module.definition.useWhen, useWhen.isEmpty == false {
-                lines.append("  use_when: \(useWhen)")
-            }
-            if module.definition.examples.isEmpty == false {
-                lines.append("  examples: \(module.definition.examples.joined(separator: " | "))")
-            }
-            return lines.joined(separator: "\n")
-        }.joined(separator: "\n")
-        let referenceSummary = renderReferenceSummary(referenceDate: referenceDate, timeZone: timeZone)
-
-        let system = """
-        You are verifying whether the router's current answer_directly choice should be overridden by a tool.
-        This is a narrow check for a small model: pick an allowed tool when one clearly fits, otherwise return null.
-        \(referenceSummary)
-
-        Judge only the latest user message in this stage. Ignore prior conversation and any previous tool calls.
-        Greetings, casual chat, and stable general knowledge can return null.
-        Requests about the user's calendar, mail, files, or current Mac state should return a matching tool, not null.
-        Most messages should return null. Only choose a tool when the user is directly asking to read personal, local, or current data.
-
-        Examples:
-        - "Hello." -> {"toolName":null,"reasonCode":"direct_answer_ok"}
-        - "How are you?" -> {"toolName":null,"reasonCode":"direct_answer_ok"}
-        - "Thanks" -> {"toolName":null,"reasonCode":"direct_answer_ok"}
-        - "Please show me my calendar events for today." -> {"toolName":"list_calendar_events","reasonCode":"fresh_personal_data"}
-        - "Show me my recent emails." -> {"toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}
-
-        Return JSON only in this shape:
-        {"toolName":"... or null","reasonCode":"..."}
-
-        Allowed reasonCode values: fresh_personal_data, same_domain_follow_up, prior_result_insufficient, direct_answer_ok, other
-
-        Valid examples:
-        {"toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}
-        {"toolName":null,"reasonCode":"direct_answer_ok"}
-
-        Rules:
-        - toolName must be null only when no allowed tool is needed.
-        - toolName must exactly match one of the allowed tools when a tool is needed.
-        - reasonCode must be direct_answer_ok or other when toolName is null.
-        - reasonCode must not be direct_answer_ok when toolName is not null.
-        - If an allowed tool can answer from the user's own mail, calendar, files, or current system state, return that tool instead of null.
-        - Never emit function calls or tool_calls.
-        - Never return markdown, code fences, or extra prose.
-
-        \(strict ? "Previous output was invalid. Retry and return exactly one JSON object matching the schema." : "")
-
-        Allowed tools:
-        \(toolList)
-        """
-
-        let user = """
         Latest user message:
         \(userInput)
         """
@@ -419,25 +342,27 @@ public enum IntentRouter {
         initialSelection: ToolIntentSelection?,
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord?,
         toolRegistry: ToolRegistry,
         modelClient: any ModelCompleting,
         referenceDate: Date,
         timeZone: TimeZone,
         debugLog: (@Sendable (String) -> Void)?
-    ) async throws -> (RoutingDecision?, [RoutingDebugAttempt]) {
+    ) async throws -> (RoutingDecision?, [RoutingDebugAttempt], RoutingSelectionStatus) {
         guard initialSelection?.action != .useTool,
               let lastToolCall,
               lastToolCall.approved,
               let lastModule = toolRegistry.module(named: lastToolCall.toolName),
               lastModule.routingMetadata.supportsFollowUpReuse
         else {
-            return (nil, [])
+            return (nil, [], .exhausted)
         }
 
-        let (verification, attempts) = try await requestFollowUpReuseSelection(
+        let (verification, attempts, status) = try await requestFollowUpReuseSelection(
             messages: messages,
             userInput: userInput,
+            sessionSummary: sessionSummary,
             lastToolCall: lastToolCall,
             toolRegistry: toolRegistry,
             modelClient: modelClient,
@@ -448,7 +373,7 @@ public enum IntentRouter {
         guard let verification,
               verification.reuseLastTool
         else {
-            return (nil, attempts)
+            return (nil, attempts, status)
         }
 
         return (
@@ -457,7 +382,8 @@ public enum IntentRouter {
                 toolName: lastToolCall.toolName,
                 reasonCode: verification.reasonCode
             ),
-            attempts
+            attempts,
+            status
         )
     }
 
@@ -473,6 +399,8 @@ public enum IntentRouter {
             reasonCode = normalizeReasonCode(raw.reasonCode, fallback: .directAnswerOK)
         case .useTool:
             reasonCode = normalizeReasonCode(raw.reasonCode, fallback: .freshPersonalData, disallowDirectAnswer: true)
+        case .clarify:
+            return nil
         }
 
         return ToolIntentSelection(action: action, toolName: normalizeNullableString(raw.toolName), reasonCode: reasonCode)
@@ -488,44 +416,43 @@ public enum IntentRouter {
         return FollowUpReuseSelection(reuseLastTool: raw.reuseLastTool, reasonCode: reasonCode)
     }
 
-    private static func parseDirectAnswerOverride(from content: String) -> DirectAnswerOverrideSelection? {
-        guard let raw = decodeJSON(content, as: RawDirectAnswerOverrideSelection.self) else {
-            return nil
-        }
-
-        let toolName = normalizeNullableString(raw.toolName)
-        let fallback: RoutingReasonCode = toolName == nil ? .directAnswerOK : .freshPersonalData
-        let reasonCode = normalizeReasonCode(raw.reasonCode, fallback: fallback, disallowDirectAnswer: toolName != nil)
-        return DirectAnswerOverrideSelection(toolName: toolName, reasonCode: reasonCode)
-    }
-
     private static func requestClassifierSelection(
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord?,
         toolRegistry: ToolRegistry,
         modelClient: any ModelCompleting,
         referenceDate: Date,
         timeZone: TimeZone,
         debugLog: (@Sendable (String) -> Void)?
-    ) async throws -> (ToolIntentSelection?, [RoutingDebugAttempt]) {
+    ) async throws -> (ToolIntentSelection?, [RoutingDebugAttempt], RoutingSelectionStatus) {
         let attempts = [false, true]
         var debugAttempts: [RoutingDebugAttempt] = []
         for strict in attempts {
             let classifierMessages = buildClassifierMessages(
                 messages: messages,
                 userInput: userInput,
+                sessionSummary: sessionSummary,
                 lastToolCall: lastToolCall,
                 toolRegistry: toolRegistry,
                 referenceDate: referenceDate,
                 timeZone: timeZone,
                 strict: strict
             )
-            guard let text = try? await modelClient.complete(
-                messages: classifierMessages,
-                tools: [],
-                mode: .textOnly
-            ).text else {
+            let outcome: CompletionOutcome
+            do {
+                outcome = try await modelClient.complete(
+                    messages: classifierMessages,
+                    tools: [],
+                    mode: .structuredText
+                )
+            } catch {
+                debugAttempts.append(RoutingDebugAttempt(stage: "classifier", strict: strict, status: "model_error", output: sanitizeDebugText(error.localizedDescription)))
+                debugLog?("[debug][intent_router][classifier] strict=\(strict) model_error=\(sanitizeDebugText(error.localizedDescription))")
+                return (nil, debugAttempts, .modelError)
+            }
+            guard let text = outcome.text else {
                 debugAttempts.append(RoutingDebugAttempt(stage: "classifier", strict: strict, status: "empty_response", output: nil))
                 debugLog?("[debug][intent_router][classifier] strict=\(strict) empty_response=true")
                 continue
@@ -537,41 +464,51 @@ public enum IntentRouter {
             }
             if isValidSelection(selection, toolRegistry: toolRegistry) {
                 debugAttempts.append(RoutingDebugAttempt(stage: "classifier", strict: strict, status: "accepted", output: sanitizeDebugText(text)))
-                return (selection, debugAttempts)
+                return (selection, debugAttempts, .accepted)
             }
             debugAttempts.append(RoutingDebugAttempt(stage: "classifier", strict: strict, status: "invalid_selection", output: sanitizeDebugText(text)))
             debugLog?("[debug][intent_router][classifier] strict=\(strict) invalid_selection=\(sanitizeDebugText(text))")
         }
-        return (nil, debugAttempts)
+        return (nil, debugAttempts, .exhausted)
     }
 
     private static func requestFollowUpReuseSelection(
         messages: [(role: String, content: String)],
         userInput: String,
+        sessionSummary: String?,
         lastToolCall: ToolCallRecord,
         toolRegistry: ToolRegistry,
         modelClient: any ModelCompleting,
         referenceDate: Date,
         timeZone: TimeZone,
         debugLog: (@Sendable (String) -> Void)?
-    ) async throws -> (FollowUpReuseSelection?, [RoutingDebugAttempt]) {
+    ) async throws -> (FollowUpReuseSelection?, [RoutingDebugAttempt], RoutingSelectionStatus) {
         let attempts = [false, true]
         var debugAttempts: [RoutingDebugAttempt] = []
         for strict in attempts {
             let verificationMessages = buildFollowUpVerificationMessages(
                 messages: messages,
                 userInput: userInput,
+                sessionSummary: sessionSummary,
                 lastToolCall: lastToolCall,
                 toolRegistry: toolRegistry,
                 referenceDate: referenceDate,
                 timeZone: timeZone,
                 strict: strict
             )
-            guard let text = try? await modelClient.complete(
-                messages: verificationMessages,
-                tools: [],
-                mode: .textOnly
-            ).text else {
+            let outcome: CompletionOutcome
+            do {
+                outcome = try await modelClient.complete(
+                    messages: verificationMessages,
+                    tools: [],
+                    mode: .structuredText
+                )
+            } catch {
+                debugAttempts.append(RoutingDebugAttempt(stage: "follow_up", strict: strict, status: "model_error", output: sanitizeDebugText(error.localizedDescription)))
+                debugLog?("[debug][intent_router][follow_up] strict=\(strict) model_error=\(sanitizeDebugText(error.localizedDescription))")
+                return (nil, debugAttempts, .modelError)
+            }
+            guard let text = outcome.text else {
                 debugAttempts.append(RoutingDebugAttempt(stage: "follow_up", strict: strict, status: "empty_response", output: nil))
                 debugLog?("[debug][intent_router][follow_up] strict=\(strict) empty_response=true")
                 continue
@@ -579,72 +516,13 @@ public enum IntentRouter {
             if let verification = parseFollowUpReuse(from: text),
                isValidFollowUpReuseSelection(verification) {
                 debugAttempts.append(RoutingDebugAttempt(stage: "follow_up", strict: strict, status: "accepted", output: sanitizeDebugText(text)))
-                return (verification, debugAttempts)
+                return (verification, debugAttempts, .accepted)
             }
             let issue = parseFollowUpReuse(from: text) == nil ? "invalid_json" : "invalid_selection"
             debugAttempts.append(RoutingDebugAttempt(stage: "follow_up", strict: strict, status: issue, output: sanitizeDebugText(text)))
             debugLog?("[debug][intent_router][follow_up] strict=\(strict) \(issue)=\(sanitizeDebugText(text))")
         }
-        return (nil, debugAttempts)
-    }
-
-    private static func requestDirectAnswerVerificationSelection(
-        messages: [(role: String, content: String)],
-        userInput: String,
-        lastToolCall: ToolCallRecord?,
-        toolRegistry: ToolRegistry,
-        modelClient: any ModelCompleting,
-        referenceDate: Date,
-        timeZone: TimeZone,
-        debugLog: (@Sendable (String) -> Void)?
-    ) async throws -> (DirectAnswerOverrideSelection?, [RoutingDebugAttempt]) {
-        let attempts = [false, true]
-        var debugAttempts: [RoutingDebugAttempt] = []
-        for strict in attempts {
-            let verificationMessages = buildDirectAnswerVerificationMessages(
-                messages: messages,
-                userInput: userInput,
-                lastToolCall: lastToolCall,
-                toolRegistry: toolRegistry,
-                referenceDate: referenceDate,
-                timeZone: timeZone,
-                strict: strict
-            )
-            guard let text = try? await modelClient.complete(
-                messages: verificationMessages,
-                tools: [],
-                mode: .textOnly
-            ).text else {
-                debugAttempts.append(RoutingDebugAttempt(stage: "direct_answer_check", strict: strict, status: "empty_response", output: nil))
-                debugLog?("[debug][intent_router][direct_answer_check] strict=\(strict) empty_response=true")
-                continue
-            }
-            guard let selection = parseDirectAnswerOverride(from: text) else {
-                debugAttempts.append(RoutingDebugAttempt(stage: "direct_answer_check", strict: strict, status: "invalid_json", output: sanitizeDebugText(text)))
-                debugLog?("[debug][intent_router][direct_answer_check] strict=\(strict) invalid_json=\(sanitizeDebugText(text))")
-                continue
-            }
-            if isValidDirectAnswerOverrideSelection(selection, toolRegistry: toolRegistry) {
-                debugAttempts.append(RoutingDebugAttempt(stage: "direct_answer_check", strict: strict, status: "accepted", output: sanitizeDebugText(text)))
-                return (selection, debugAttempts)
-            }
-            debugAttempts.append(RoutingDebugAttempt(stage: "direct_answer_check", strict: strict, status: "invalid_selection", output: sanitizeDebugText(text)))
-            debugLog?("[debug][intent_router][direct_answer_check] strict=\(strict) invalid_selection=\(sanitizeDebugText(text))")
-        }
-        return (nil, debugAttempts)
-    }
-
-    private static func isValidDirectAnswerOverrideSelection(
-        _ selection: DirectAnswerOverrideSelection,
-        toolRegistry: ToolRegistry
-    ) -> Bool {
-        if let toolName = selection.toolName {
-            guard toolRegistry.module(named: toolName) != nil else {
-                return false
-            }
-            return selection.reasonCode != .directAnswerOK
-        }
-        return selection.reasonCode == .directAnswerOK || selection.reasonCode == .other
+        return (nil, debugAttempts, .exhausted)
     }
 
     private static func renderDebugTrace(_ attempts: [RoutingDebugAttempt]) -> String? {
@@ -675,6 +553,8 @@ public enum IntentRouter {
                 return false
             }
             return selection.reasonCode != .directAnswerOK
+        case .clarify:
+            return false
         }
     }
 
@@ -749,6 +629,14 @@ public enum IntentRouter {
         }
 
         return lines.dropFirst().dropLast().joined(separator: "\n")
+    }
+
+    private static func renderSessionSummary(_ sessionSummary: String?) -> String {
+        guard let sessionSummary = sessionSummary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              sessionSummary.isEmpty == false else {
+            return "Session summary: none."
+        }
+        return "Session summary:\n\(sessionSummary)"
     }
 
     private static func renderReferenceSummary(referenceDate: Date, timeZone: TimeZone) -> String {

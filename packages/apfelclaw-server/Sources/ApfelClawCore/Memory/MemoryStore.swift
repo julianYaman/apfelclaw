@@ -185,6 +185,48 @@ public final class MemoryStore: @unchecked Sendable {
         }
     }
 
+    public func replaceSessionSummary(sessionID: Int64, summary: String) throws {
+        try execute("DELETE FROM summaries WHERE session_id = \(sessionID);")
+
+        let sql = "INSERT INTO summaries (session_id, summary, created_at) VALUES (?, ?, ?);"
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_int64(statement, 1, sessionID)
+        sqlite3_bind_text(statement, 2, summary, -1, transientDestructor)
+        sqlite3_bind_text(statement, 3, Self.timestamp, -1, transientDestructor)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppError.message("Unable to persist session summary.")
+        }
+    }
+
+    public func deleteSessionSummary(sessionID: Int64) throws {
+        let sql = "DELETE FROM summaries WHERE session_id = ?;"
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_int64(statement, 1, sessionID)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppError.message("Unable to delete session summary.")
+        }
+    }
+
+    public func latestSummary(sessionID: Int64) throws -> String? {
+        let sql = "SELECT summary FROM summaries WHERE session_id = ? ORDER BY id DESC LIMIT 1;"
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+
+        sqlite3_bind_int64(statement, 1, sessionID)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return nil
+        }
+
+        return Self.columnText(statement, index: 0)
+    }
+
     public func logToolCall(sessionID: Int64, toolName: String, approved: Bool, payload: String) throws {
         let sql = "INSERT INTO tool_calls (session_id, tool_name, approved, payload, created_at) VALUES (?, ?, ?, ?, ?);"
         let statement = try prepare(sql)

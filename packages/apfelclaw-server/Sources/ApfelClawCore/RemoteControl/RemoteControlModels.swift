@@ -22,7 +22,7 @@ public struct TelegramRemoteControlConfig: Codable, Sendable {
     public init(
         enabled: Bool = false,
         pollingEnabled: Bool = false,
-        autoApproveTools: Bool = true,
+        autoApproveTools: Bool = false,
         botToken: String = "",
         botUsername: String = "",
         approvedChatID: Int64? = nil,

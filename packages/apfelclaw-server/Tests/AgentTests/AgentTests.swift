@@ -21,6 +21,7 @@ func intentRouterPicksToolFromModelClassification() async throws {
     let decision = try await IntentRouter.route(
         messages: [("user", "Show me my most recent email.")],
         userInput: "Show me my most recent email.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -37,12 +38,16 @@ func intentRouterPicksToolFromModelClassification() async throws {
 func intentRouterFallsBackToDirectAnswerWhenClassifierSaysNoTool() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#]
+        responses: [
+            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
+            #"{"toolName":null,"reasonCode":"direct_answer_ok"}"#,
+        ]
     )
 
     let decision = try await IntentRouter.route(
         messages: [("user", "What is your version?")],
         userInput: "What is your version?",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -74,6 +79,7 @@ func intentRouterReusesCalendarToolForShortFollowUp() async throws {
             ("assistant", "You have 2 calendar event(s) for today:")
         ],
         userInput: "And for tomorrow?",
+        sessionSummary: nil,
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -102,6 +108,7 @@ func classifierPromptIncludesCompactRoutingContext() throws {
             ("assistant", "You have 2 calendar event(s) for today:")
         ],
         userInput: "And for tomorrow?",
+        sessionSummary: "Earlier context:\nuser: Review my schedule for this week.",
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
         referenceDate: routerReferenceDate,
@@ -120,6 +127,7 @@ func classifierPromptIncludesCompactRoutingContext() throws {
     #expect(messages[1].content?.contains("toolName: list_calendar_events") == true)
     #expect(messages[1].content?.contains("scopeSummary: Previous calendar lookup covered today") == true)
     #expect(messages[1].content?.contains(#""timeframe":"today""#) == true)
+    #expect(messages[1].content?.contains("Session summary:") == true)
 }
 
 @Test
@@ -129,6 +137,7 @@ func strictClassifierPromptCallsOutRetryAfterInvalidOutput() throws {
     let messages = IntentRouter.buildClassifierMessages(
         messages: [("user", "Show me my recent emails.")],
         userInput: "Show me my recent emails.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         referenceDate: routerReferenceDate,
@@ -140,52 +149,24 @@ func strictClassifierPromptCallsOutRetryAfterInvalidOutput() throws {
 }
 
 @Test
-func directAnswerVerificationPromptPrefersToolWhenOneFits() throws {
+func classifierPromptIncludesFinalCheckRuleForLatestUserMessage() throws {
     let runtime = try ToolRuntime()
 
-    let messages = IntentRouter.buildDirectAnswerVerificationMessages(
-        messages: [("user", "Show me my recent emails.")],
+    let messages = IntentRouter.buildClassifierMessages(
+        messages: [
+            ("user", "Thanks for helping earlier."),
+            ("assistant", "Of course."),
+        ],
         userInput: "Show me my recent emails.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         referenceDate: routerReferenceDate,
         timeZone: routerTimeZone
     )
 
-    #expect(messages[0].content?.contains("This is a narrow check for a small model") == true)
-    #expect(messages[0].content?.contains("Most messages should return null.") == true)
-    #expect(messages[0].content?.contains("Judge only the latest user message in this stage.") == true)
-    #expect(messages[0].content?.contains(#"- "Hello." -> {"toolName":null,"reasonCode":"direct_answer_ok"}"#) == true)
-    #expect(messages[0].content?.contains("should return a matching tool, not null") == true)
-    #expect(messages[0].content?.contains("examples: Please show me my recent emails | Show me my most recent email | What emails arrived recently?") == true)
-}
-
-@Test
-func directAnswerVerificationPromptIgnoresConversationAndLastToolContext() throws {
-    let runtime = try ToolRuntime()
-    let lastToolCall = ToolCallRecord(
-        toolName: "list_calendar_events",
-        approved: true,
-        payload: #"{"arguments":"{}","result":"{\"results\":[],\"timeframe\":\"today\"}"}"#,
-        createdAt: "2026-04-07T10:00:00Z"
-    )
-
-    let messages = IntentRouter.buildDirectAnswerVerificationMessages(
-        messages: [
-            ("user", "What is on my calendar today?"),
-            ("assistant", "You have no calendar events for today."),
-        ],
-        userInput: "Thank you.",
-        lastToolCall: lastToolCall,
-        toolRegistry: runtime.registry,
-        referenceDate: routerReferenceDate,
-        timeZone: routerTimeZone
-    )
-
-    #expect(messages[1].content?.contains("Latest user message:\nThank you.") == true)
-    #expect(messages[1].content?.contains("Recent conversation:") == false)
-    #expect(messages[1].content?.contains("Last successful tool call:") == false)
-    #expect(messages[1].content?.contains("calendar") == false)
+    #expect(messages[0].content?.contains("Final-check rule:") == true)
+    #expect(messages[0].content?.contains("latest user message on its own clearly asks to read personal, local, or current data") == true)
 }
 
 @Test
@@ -198,6 +179,7 @@ func classifierPromptIncludesToolSpecificGuidanceForDisambiguation() throws {
             ("assistant", "You have 3 events tomorrow.")
         ],
         userInput: "Where are my events?",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         referenceDate: routerReferenceDate,
@@ -244,15 +226,18 @@ func systemPromptIncludesReferenceTimeForRelativeDates() {
 
     let prompt = ConversationService.systemPrompt(
         assistantName: "Apfelclaw",
+        userName: "Yaman",
         now: date,
         timeZone: timeZone
     )
 
     #expect(prompt.contains("Reference time for this request:"))
     #expect(prompt.contains("Backend version: \(AppVersion.current)."))
+    #expect(prompt.contains("The user's preferred name is Yaman."))
     #expect(prompt.contains("2026-04-06T14:00:00+02:00"))
     #expect(prompt.contains("today"))
     #expect(prompt.contains("relative time phrases"))
+    #expect(prompt.contains("Do not guess personal, local, or current data."))
 }
 
 @Test
@@ -265,12 +250,14 @@ func toolCallPromptLocksToSelectedTool() throws {
 
     let prompt = ConversationService.toolCallSystemPrompt(
         assistantName: "Apfelclaw",
+        userName: "Yaman",
         selectedTool: selectedTool,
         now: date,
         timeZone: timeZone
     )
 
     #expect(prompt.contains(#"The router already selected the tool "list_calendar_events""#))
+    #expect(prompt.contains("The user's preferred name is Yaman."))
     #expect(prompt.contains("Never choose a different tool name."))
     #expect(prompt.contains("If required information is missing, ask one short clarification question"))
 }
@@ -339,6 +326,7 @@ func intentRouterRecoversToolUseWhenPriorToolDidNotCoverNewScope() async throws 
             ("assistant", "You have no calendar event(s) for today."),
         ],
         userInput: "And for tomorrow?",
+        sessionSummary: nil,
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -364,6 +352,7 @@ func intentRouterRetriesInvalidClassifierOutputBeforeFallingBack() async throws 
     let decision = try await IntentRouter.route(
         messages: [("user", "Show me my recent emails.")],
         userInput: "Show me my recent emails.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -377,7 +366,7 @@ func intentRouterRetriesInvalidClassifierOutputBeforeFallingBack() async throws 
     #expect(decision.debugTrace?.contains(#""stage":"classifier""#) == true)
     #expect(decision.debugTrace?.contains(#""status":"invalid_json""#) == true)
     #expect(decision.debugTrace?.contains(#""status":"accepted""#) == true)
-    #expect(await model.recordedModes() == [.textOnly, .textOnly])
+    #expect(await model.recordedModes() == [.structuredText, .structuredText])
 }
 
 @Test
@@ -393,6 +382,7 @@ func intentRouterRejectsAnswerDirectlyWithFollowUpReasonCode() async throws {
     let decision = try await IntentRouter.route(
         messages: [("user", "What is on my calendar for today?")],
         userInput: "What is on my calendar for today?",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -403,74 +393,20 @@ func intentRouterRejectsAnswerDirectlyWithFollowUpReasonCode() async throws {
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_calendar_events")
     #expect(decision.reasonCode == .freshPersonalData)
-    #expect(await model.recordedModes() == [.textOnly, .textOnly])
+    #expect(await model.recordedModes() == [.structuredText, .structuredText])
 }
 
 @Test
-func intentRouterVerifiesAcceptedDirectAnswerBeforeKeepingIt() async throws {
+func intentRouterKeepsAcceptedDirectAnswerInOnePass() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"action":"use_tool","toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}"#,
-        ]
+        responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#]
     )
 
     let decision = try await IntentRouter.route(
         messages: [("user", "Show me my recent emails.")],
         userInput: "Show me my recent emails.",
-        lastToolCall: nil,
-        toolRegistry: runtime.registry,
-        modelClient: model,
-        referenceDate: routerReferenceDate,
-        timeZone: routerTimeZone
-    )
-
-    #expect(decision.action == .useTool)
-    #expect(decision.toolName == "list_recent_mail")
-    #expect(decision.reasonCode == .freshPersonalData)
-    #expect(decision.debugTrace?.contains(#""stage":"direct_answer_check""#) == true)
-    #expect(await model.recordedModes() == [.textOnly, .textOnly])
-}
-
-@Test
-func intentRouterAcceptsToolOverrideWhenReasonCodeIsWrong() async throws {
-    let runtime = try ToolRuntime()
-    let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"toolName":"list_recent_mail","reasonCode":"direct_answer_ok"}"#,
-        ]
-    )
-
-    let decision = try await IntentRouter.route(
-        messages: [("user", "Show me my recent emails.")],
-        userInput: "Show me my recent emails.",
-        lastToolCall: nil,
-        toolRegistry: runtime.registry,
-        modelClient: model,
-        referenceDate: routerReferenceDate,
-        timeZone: routerTimeZone
-    )
-
-    #expect(decision.action == .useTool)
-    #expect(decision.toolName == "list_recent_mail")
-    #expect(decision.reasonCode == .freshPersonalData)
-}
-
-@Test
-func intentRouterKeepsGreetingAsDirectAnswerWhenVerifierReturnsNull() async throws {
-    let runtime = try ToolRuntime()
-    let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"toolName":null,"reasonCode":"direct_answer_ok"}"#,
-        ]
-    )
-
-    let decision = try await IntentRouter.route(
-        messages: [("user", "Hello.")],
-        userInput: "Hello.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -481,6 +417,53 @@ func intentRouterKeepsGreetingAsDirectAnswerWhenVerifierReturnsNull() async thro
     #expect(decision.action == .answerDirectly)
     #expect(decision.toolName == nil)
     #expect(decision.reasonCode == .directAnswerOK)
+    #expect(await model.recordedModes() == [.structuredText])
+}
+
+@Test
+func intentRouterKeepsGreetingAsDirectAnswerWithoutExtraVerification() async throws {
+    let runtime = try ToolRuntime()
+    let model = StubModelClient(
+        responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#]
+    )
+
+    let decision = try await IntentRouter.route(
+        messages: [("user", "Hello.")],
+        userInput: "Hello.",
+        sessionSummary: nil,
+        lastToolCall: nil,
+        toolRegistry: runtime.registry,
+        modelClient: model,
+        referenceDate: routerReferenceDate,
+        timeZone: routerTimeZone
+    )
+
+    #expect(decision.action == .answerDirectly)
+    #expect(decision.toolName == nil)
+    #expect(decision.reasonCode == .directAnswerOK)
+    #expect(await model.recordedModes() == [.structuredText])
+}
+
+@Test
+func intentRouterKeepsGreetingAsDirectAnswerWhenClassifierSaysSo() async throws {
+    let runtime = try ToolRuntime()
+    let model = StubModelClient(responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#])
+
+    let decision = try await IntentRouter.route(
+        messages: [("user", "Hello.")],
+        userInput: "Hello.",
+        sessionSummary: nil,
+        lastToolCall: nil,
+        toolRegistry: runtime.registry,
+        modelClient: model,
+        referenceDate: routerReferenceDate,
+        timeZone: routerTimeZone
+    )
+
+    #expect(decision.action == .answerDirectly)
+    #expect(decision.toolName == nil)
+    #expect(decision.reasonCode == .directAnswerOK)
+    #expect(await model.recordedModes() == [.structuredText])
 }
 
 @Test
@@ -505,6 +488,7 @@ func intentRouterRecoversFollowUpReuseFromPipeSeparatedReasonCode() async throws
             ("assistant", "Your recent 5 mails:")
         ],
         userInput: "Can you try again?",
+        sessionSummary: nil,
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -525,6 +509,7 @@ func intentRouterUsesOtherReasonWhenClassifierRemainsInvalid() async throws {
     let decision = try await IntentRouter.route(
         messages: [("user", "Show me my recent emails.")],
         userInput: "Show me my recent emails.",
+        sessionSummary: nil,
         lastToolCall: nil,
         toolRegistry: runtime.registry,
         modelClient: model,
@@ -532,10 +517,10 @@ func intentRouterUsesOtherReasonWhenClassifierRemainsInvalid() async throws {
         timeZone: routerTimeZone
     )
 
-    #expect(decision.action == .answerDirectly)
+    #expect(decision.action == .clarify)
     #expect(decision.toolName == nil)
     #expect(decision.reasonCode == .other)
-    #expect(await model.recordedModes() == [.textOnly, .textOnly])
+    #expect(await model.recordedModes() == [.structuredText, .structuredText])
 }
 
 @Test
@@ -554,6 +539,7 @@ func followUpVerifierDoesNotReuseMailWhenDomainSwitches() throws {
             ("assistant", "Your recent mail:")
         ],
         userInput: "Find notes.md",
+        sessionSummary: "Earlier context:\nuser: You summarized my inbox before.",
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
         referenceDate: routerReferenceDate,
@@ -563,6 +549,7 @@ func followUpVerifierDoesNotReuseMailWhenDomainSwitches() throws {
     #expect(messages[0].content?.contains("You are checking whether the user's latest message continues the previous tool-backed request.") == true)
     #expect(messages[1].content?.contains("toolName: list_recent_mail") == true)
     #expect(messages[1].content?.contains("Previous mail lookup returned") == true)
+    #expect(messages[1].content?.contains("Session summary:") == true)
 }
 
 @Test
@@ -586,6 +573,53 @@ func toolRuntimeOnlyProvidesDeterministicFallbackForSupportedTools() throws {
     #expect(runtime.deterministicFallbackToolCall(named: "get_file_info") == nil)
 }
 
+@Test
+func conversationServiceRespectsApprovalModeByDefault() async throws {
+    let harness = try ConversationTestHarness(defaults: AppConfig(
+        assistantName: "Apfelclaw",
+        userName: "You",
+        approvalMode: .always,
+        memoryEnabled: true
+    ))
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"get_mac_status","reasonCode":"fresh_personal_data"}"#),
+            .toolCall(ToolCall(id: "call_1", name: "get_mac_status", argumentsJSON: "{}")),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Approval Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: "What's my Mac status?",
+        autoApproveTools: false
+    )
+
+    #expect(response.toolCall?.name == "get_mac_status")
+    #expect(response.toolCall?.approved == false)
+    #expect(response.assistantMessage.contains("approval was not granted"))
+}
+
+@Test
+func conversationServicePersistsSessionSummaryForLongChats() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(modelClient: PatternModelClient())
+    let session = try conversationService.createSession(title: "Summary Test")
+
+    for index in 1 ... 7 {
+        let response = try await conversationService.sendMessage(
+            sessionID: session.id,
+            userInput: "Chat turn \(index)",
+            autoApproveTools: false
+        )
+        #expect(response.assistantMessage == "Okay.")
+    }
+
+    let summary = try harness.memoryStore.latestSummary(sessionID: session.id)
+    #expect(summary?.contains("Earlier context:") == true)
+    #expect(summary?.contains("user: Chat turn 1") == true)
+}
+
 private actor StubModelResponses {
     private var responses: [String]
     private var modes: [CompletionMode] = []
@@ -600,6 +634,34 @@ private actor StubModelResponses {
             return nil
         }
         return responses.removeFirst()
+    }
+
+    func recordedModes() -> [CompletionMode] {
+        modes
+    }
+}
+
+private enum StubEvent {
+    case text(String)
+    case toolCall(ToolCall)
+    case failure(String)
+    case empty
+}
+
+private actor StubEventQueue {
+    private var events: [StubEvent]
+    private var modes: [CompletionMode] = []
+
+    init(_ events: [StubEvent]) {
+        self.events = events
+    }
+
+    func next(mode: CompletionMode) -> StubEvent? {
+        modes.append(mode)
+        guard events.isEmpty == false else {
+            return nil
+        }
+        return events.removeFirst()
     }
 
     func recordedModes() -> [CompletionMode] {
@@ -625,5 +687,77 @@ private final class StubModelClient: ModelCompleting, @unchecked Sendable {
 
     func recordedModes() async -> [CompletionMode] {
         await responses.recordedModes()
+    }
+}
+
+private final class SequenceModelClient: ModelCompleting, @unchecked Sendable {
+    private let events: StubEventQueue
+
+    init(events: [StubEvent]) {
+        self.events = StubEventQueue(events)
+    }
+
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
+        switch await events.next(mode: mode) {
+        case let .text(text):
+            return CompletionOutcome(text: text, toolCall: nil)
+        case let .toolCall(toolCall):
+            return CompletionOutcome(text: nil, toolCall: toolCall)
+        case let .failure(message):
+            throw AppError.message(message)
+        case .empty, nil:
+            return CompletionOutcome(text: nil, toolCall: nil)
+        }
+    }
+
+    func recordedModes() async -> [CompletionMode] {
+        await events.recordedModes()
+    }
+}
+
+private struct PatternModelClient: ModelCompleting {
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
+        switch mode {
+        case .structuredText:
+            let system = messages.first?.content ?? ""
+            if system.contains("verifying whether the router's current answer_directly choice") {
+                return CompletionOutcome(text: #"{"toolName":null,"reasonCode":"direct_answer_ok"}"#, toolCall: nil)
+            }
+            return CompletionOutcome(text: #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#, toolCall: nil)
+        case .userFacingText:
+            return CompletionOutcome(text: "Okay.", toolCall: nil)
+        case .toolAware:
+            Issue.record("PatternModelClient should not receive tool-aware requests in this test.")
+            return CompletionOutcome(text: nil, toolCall: nil)
+        }
+    }
+}
+
+private struct ConversationTestHarness {
+    let root: URL
+    let directories: AppDirectories
+    let settingsStore: SettingsStore
+    let memoryStore: MemoryStore
+    let configService: ConfigService
+
+    init(defaults: AppConfig) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        self.root = root
+        self.directories = try AppDirectories(homeDirectory: root)
+        try directories.bootstrap()
+        self.settingsStore = SettingsStore(directories: directories)
+        self.memoryStore = MemoryStore(directories: directories)
+        try memoryStore.open()
+        self.configService = try ConfigService(settingsStore: settingsStore, defaults: defaults)
+    }
+
+    func makeConversationService(modelClient: some ModelCompleting) throws -> ConversationService {
+        try ConversationService(
+            memoryStore: memoryStore,
+            configService: configService,
+            modelClient: modelClient,
+            toolRuntime: ToolRuntime()
+        )
     }
 }

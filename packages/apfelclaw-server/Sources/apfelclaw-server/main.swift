@@ -149,7 +149,7 @@ struct ApfelClawServerMain {
             return try await bootstrap.conversationService.sendMessage(
                 sessionID: sessionID,
                 userInput: body.content,
-                autoApproveTools: body.autoApproveTools ?? true
+                autoApproveTools: body.autoApproveTools ?? false
             )
         }
 
