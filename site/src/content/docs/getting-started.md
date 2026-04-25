@@ -79,6 +79,8 @@ A typical config looks like:
 
 See the [API Reference](/docs/api) for details on reading and updating config via the REST API.
 
+When the assistant needs fresh local or personal data, it may ask for a clarification instead of guessing.
+
 Remote control providers store their own state separately in `~/.apfelclaw/remote-control.json`.
 
 ## What's next

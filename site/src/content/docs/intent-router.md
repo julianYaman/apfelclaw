@@ -1,14 +1,19 @@
 ---
 title: Intent Router
-description: How apfelclaw decides when to use a tool — the 3-stage, model-driven routing flow.
+description: How apfelclaw decides when to use a tool — the 2-stage, model-driven routing flow.
 order: 6
 ---
 
-The Intent Router is the decision-making core of apfelclaw. On every user message, it determines whether to invoke a tool or answer directly. Rather than relying on keyword matching or hardcoded trigger phrases, it uses sequential model calls to classify intent.
+The Intent Router is the decision-making core of apfelclaw. On every user message, it determines whether to invoke a tool, answer directly, or ask for clarification. Rather than relying on keyword matching or hardcoded trigger phrases, it uses model-driven intent classification.
 
 ## Overview
 
-The router runs up to **three stages**, each a lightweight classification call to the on-device model. If any stage produces a definitive tool selection, routing stops immediately. If all stages pass without selecting a tool, the fallback is to answer directly.
+The router runs up to **two stages**:
+
+1. Classify the message
+2. Reuse the previous tool when the user is continuing a tool-backed request
+
+If the router cannot make a reliable decision, it now asks for clarification instead of guessing.
 
 ```
 User message
@@ -23,15 +28,9 @@ User message
 │  Stage 2: Follow-up  │──── reuse tool? ─────▶ Done (use tool)
 │  reuse check         │
 └─────────────────────┘
-    │ no
+    │ no or uncertain
     ▼
-┌─────────────────────┐
-│  Stage 3: Direct     │──── override? ───────▶ Done (use tool)
-│  answer verification │
-└─────────────────────┘
-    │ no
-    ▼
-  Answer directly
+  Ask for clarification
 ```
 
 ## Stage 1: Classifier
@@ -56,7 +55,7 @@ The model returns a JSON object:
 }
 ```
 
-If the model selects a valid tool, routing is complete. If it selects `answer_directly`, the router proceeds to Stage 2.
+If the model selects a valid tool, routing is complete. If it selects `answer_directly`, the router normally keeps that decision unless Stage 2 recovers a tool-backed follow-up.
 
 ## Stage 2: Follow-up reuse
 
@@ -82,23 +81,6 @@ The model returns:
 
 If `reuseLastTool` is true, the routing decision becomes `use_tool` with the previous tool name.
 
-## Stage 3: Direct answer verification
-
-This stage runs when Stage 1 chose `answer_directly` and Stage 2 did not recover a tool. It acts as a safety net for the small on-device model, which may sometimes skip a tool for requests about personal or local data.
-
-The model is re-presented with the tool list and asked whether a tool should **override** the direct answer decision. This catches cases where the user asks something like "What's on my calendar?" and the model incorrectly decides it can answer without a tool.
-
-Unlike the classifier and follow-up stages, this verification step looks only at the latest user message. It intentionally ignores prior conversation and previous tool calls so that acknowledgements like "Thanks" or "Thank you." do not get pulled back into a calendar or mail tool route just because the earlier context was tool-backed.
-
-```json
-{
-  "toolName": "list_calendar_events",
-  "reasonCode": "fresh_personal_data"
-}
-```
-
-If a tool name is returned, the decision is overridden to `use_tool`. If null, `answer_directly` stands.
-
 ## Reason codes
 
 Every routing decision includes a reason code explaining why the decision was made:
@@ -120,9 +102,9 @@ Each stage tries **twice**:
 1. **Normal attempt** — standard prompt
 2. **Strict retry** — if the first attempt produces unparseable JSON or fails validation, the prompt is augmented with a notice: "Previous output was invalid. Retry and return exactly one JSON object matching the schema."
 
-This means the router makes up to 6 model calls in the worst case (2 per stage). In practice, Stage 1 resolves most messages on the first attempt.
+This means the router makes up to 4 model calls in the worst case (2 per stage). In practice, Stage 1 resolves most messages on the first attempt.
 
-If both attempts in a stage fail, the stage returns no result and control falls through to the next stage (or the final `answer_directly` fallback).
+If both attempts in a stage fail, the stage returns no result and control falls through to the next stage or clarification.
 
 ## Context assembly
 
@@ -149,6 +131,10 @@ When a tool was used in a recent turn, the router injects a `ToolResultSnapshot`
 
 The last 4 messages provide conversational context without overwhelming the small model.
 
+### Session summary
+
+When available, a compact rolling session summary is injected so the router can preserve longer context without loading the full conversation history.
+
 ### Reference time
 
 An explicit time reference with timezone, including resolved "Today means..." and "Tomorrow means..." labels, so the model can correctly interpret relative time expressions.
@@ -157,9 +143,9 @@ An explicit time reference with timezone, including resolved "Today means..." an
 
 When `debug` is enabled in the config, every model call across all stages is recorded as a debug attempt with:
 
-- **stage** — which stage (`classifier`, `follow_up`, `direct_answer_check`)
+- **stage** — which stage (`classifier`, `follow_up`)
 - **strict** — whether this was a retry attempt
-- **status** — outcome (`accepted`, `empty_response`, `invalid_json`, `invalid_selection`)
+- **status** — outcome (`accepted`, `empty_response`, `invalid_json`, `invalid_selection`, `model_error`)
 - **output** — the sanitized raw model output
 
 All attempts are accumulated and serialized as a JSON array attached to the final routing decision. This trace is printed to the server log and gives full visibility into how the router arrived at its decision.
@@ -170,4 +156,4 @@ The Intent Router follows the project's core guidelines:
 
 - **No keyword matching** — routing decisions are made by the model, not by scanning for trigger words. If routing needs improvement, the fix is to improve prompts, tool schemas, and context rather than adding hardcoded patterns.
 - **Local-first** — all classification happens on-device via `apfel`. No network calls are made for routing.
-- **Graceful degradation** — if the model fails to produce valid output across all retries and stages, the router falls back to `answer_directly` rather than erroring.
+- **Graceful degradation** — if the model fails to produce valid output across all retries and stages, the router asks for clarification rather than guessing.

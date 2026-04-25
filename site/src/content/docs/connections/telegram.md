@@ -12,7 +12,7 @@ The Telegram connection lets you write to apfelclaw remotely through a private T
 - Private bot chats only
 - One approved Telegram account
 - One linked private Telegram chat
-- Automatic tool execution using the Telegram provider's current settings
+- Tool execution follows the normal approval policy unless explicitly enabled
 - Shared slash commands such as `/new`, `/help`, `/version`, `/config`, and `/config set ...`
 
 After setup, Telegram can keep talking to apfelclaw even when the TUI is closed.
@@ -31,7 +31,7 @@ Run this inside the TUI:
 /remotecontrol setup telegram <botToken>
 ```
 
-apfelclaw verifies the bot token and starts Telegram linking mode.
+apfelclaw verifies the bot token and starts Telegram linking mode. The provider does not auto-approve tools by default.
 
 Next:
 

@@ -80,6 +80,17 @@ Returns the message history for the given session.
 
 Sends a user message to the session. The backend will route the message through the [Intent Router](/docs/intent-router), optionally invoke a [tool](/docs/tools), and return the assistant's response.
 
+Request body:
+
+```json
+{
+  "content": "Show me my recent emails",
+  "autoApproveTools": false
+}
+```
+
+`autoApproveTools` is optional and defaults to `false` when omitted.
+
 ## Remote control API
 
 The remote control endpoints back the TUI onboarding flow for external providers like Telegram.
@@ -102,7 +113,7 @@ Accepts a bot token payload:
 }
 ```
 
-The backend verifies the token, stores the Telegram provider config, and enters linking mode.
+The backend verifies the token, stores the Telegram provider config, and enters linking mode. Telegram tool execution follows the normal approval policy unless explicitly overridden.
 
 ### `POST /remotecontrol/providers/telegram/disable`
 
