@@ -23,19 +23,22 @@ public final class ConversationService: @unchecked Sendable {
     private let modelClient: any ModelCompleting
     private let toolRuntime: ToolRuntime
     private let eventHub: SessionEventHub?
+    private let apfelMaintenanceService: ApfelMaintenanceService?
 
     public init(
         memoryStore: MemoryStore,
         configService: ConfigService,
         modelClient: any ModelCompleting,
         toolRuntime: ToolRuntime,
-        eventHub: SessionEventHub? = nil
+        eventHub: SessionEventHub? = nil,
+        apfelMaintenanceService: ApfelMaintenanceService? = nil
     ) {
         self.memoryStore = memoryStore
         self.configService = configService
         self.modelClient = modelClient
         self.toolRuntime = toolRuntime
         self.eventHub = eventHub
+        self.apfelMaintenanceService = apfelMaintenanceService
     }
 
     public func createSession(title: String? = nil) throws -> SessionRecord {
@@ -61,6 +64,8 @@ public final class ConversationService: @unchecked Sendable {
         guard trimmed.isEmpty == false else {
             throw AppError.message("Message content cannot be empty.")
         }
+
+        try await apfelMaintenanceService?.ensureAvailable()
 
         let config = await configService.currentAppConfig()
         let toolPolicy = ToolPolicy(approvalMode: config.approvalMode)

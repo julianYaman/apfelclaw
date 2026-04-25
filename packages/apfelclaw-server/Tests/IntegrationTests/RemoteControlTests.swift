@@ -84,6 +84,59 @@ func commandServiceUpdatesConfigFromRemoteCommand() async throws {
 }
 
 @Test
+func commandServiceReturnsApfelStatusForRemoteCommand() async throws {
+    let harness = try RemoteControlTestHarness()
+    let configService = try harness.makeConfigService()
+    let conversationService = try harness.makeConversationService(configService: configService)
+    let updateService = harness.makeApfelUpdateService(
+        installedVersion: "1.3.0",
+        latestVersion: "1.4.0",
+        installSource: .homebrew,
+        restartMode: .homebrewService
+    )
+    let maintenanceService = ApfelMaintenanceService(apfelManager: ApfelManager(config: .default), updateService: updateService)
+    let commandService = CommandService(
+        configService: configService,
+        conversationService: conversationService,
+        apfelUpdateService: updateService,
+        apfelMaintenanceService: maintenanceService
+    )
+    let session = try conversationService.createSession(title: "Initial")
+
+    let result = try await commandService.handleIfNeeded(content: "/apfel status", sessionID: session.id, source: .telegram)
+
+    #expect(result.handled == true)
+    #expect(result.responseText?.contains("apfel installedVersion: 1.3.0") == true)
+    #expect(result.responseText?.contains("apfel latestVersion: 1.4.0") == true)
+}
+
+@Test
+func commandServiceRequiresConfirmationForRemoteApfelUpgrade() async throws {
+    let harness = try RemoteControlTestHarness()
+    let configService = try harness.makeConfigService()
+    let conversationService = try harness.makeConversationService(configService: configService)
+    let updateService = harness.makeApfelUpdateService(
+        installedVersion: "1.3.0",
+        latestVersion: "1.4.0",
+        installSource: .homebrew,
+        restartMode: .homebrewService
+    )
+    let maintenanceService = ApfelMaintenanceService(apfelManager: ApfelManager(config: .default), updateService: updateService)
+    let commandService = CommandService(
+        configService: configService,
+        conversationService: conversationService,
+        apfelUpdateService: updateService,
+        apfelMaintenanceService: maintenanceService
+    )
+    let session = try conversationService.createSession(title: "Initial")
+
+    let result = try await commandService.handleIfNeeded(content: "/apfel upgrade", sessionID: session.id, source: .telegram)
+
+    #expect(result.handled == true)
+    #expect(result.responseText?.contains("/apfel upgrade confirm") == true)
+}
+
+@Test
 func memoryStorePersistsRemoteSessionMappings() throws {
     let harness = try RemoteControlTestHarness()
     let session = try harness.memoryStore.createSession(title: "Telegram")
@@ -128,6 +181,42 @@ private struct RemoteControlTestHarness {
             configService: configService,
             modelClient: CommandTestModelClient(),
             toolRuntime: ToolRuntime()
+        )
+    }
+
+    func makeApfelUpdateService(
+        installedVersion: String,
+        latestVersion: String,
+        installSource: ApfelInstallSource,
+        restartMode: ApfelRestartMode
+    ) -> ApfelUpdateService {
+        let manager = ApfelManager(config: .default)
+        return ApfelUpdateService(
+            apfelManager: manager,
+            now: { ISO8601DateFormatter().date(from: "2026-04-26T01:10:00Z")! },
+            fetchData: { url in
+                switch installSource {
+                case .homebrew:
+                    #expect(url.absoluteString == "https://formulae.brew.sh/api/formula/apfel.json")
+                    return Data("{\"versions\":{\"stable\":\"\(latestVersion)\"}}".utf8)
+                case .manual:
+                    #expect(url.absoluteString == "https://api.github.com/repos/Arthur-Ficial/apfel/releases/latest")
+                    return Data("{\"tag_name\":\"v\(latestVersion)\",\"html_url\":\"https://example.com\"}".utf8)
+                case .unknown:
+                    return Data()
+                }
+            },
+            runCommand: { _, _, _ in CommandResult(stdout: "", stderr: "", exitCode: 0) },
+            resolveExecutable: { _ in nil },
+            inspectEnvironment: {
+                ApfelEnvironmentSnapshot(
+                    executablePath: "/usr/local/bin/apfel",
+                    installedVersion: installedVersion,
+                    installSource: installSource,
+                    restartMode: restartMode,
+                    brewPath: installSource == .homebrew ? "/opt/homebrew/bin/brew" : nil
+                )
+            }
         )
     }
 }

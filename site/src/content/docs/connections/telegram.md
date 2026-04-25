@@ -13,7 +13,7 @@ The Telegram connection lets you write to apfelclaw remotely through a private T
 - One approved Telegram account
 - One linked private Telegram chat
 - Tool execution follows the normal approval policy unless explicitly enabled
-- Shared slash commands such as `/new`, `/help`, `/version`, `/config`, and `/config set ...`
+- Shared slash commands such as `/new`, `/help`, `/version`, `/apfel ...`, `/config`, and `/config set ...`
 
 After setup, Telegram can keep talking to apfelclaw even when the TUI is closed.
 
@@ -67,7 +67,10 @@ Once linked, the Telegram chat can use the shared command layer:
 
 - `/new` starts a fresh session for the linked Telegram chat
 - `/help` shows supported commands
-- `/version` shows the backend version
+- `/version` shows the backend version and current apfel status
+- `/apfel status` shows apfel version, update, and maintenance state
+- `/apfel restart` asks for confirmation, and `/apfel restart confirm` performs the restart when supported
+- `/apfel upgrade` asks for confirmation, and `/apfel upgrade confirm` upgrades Homebrew-managed apfel and restarts it when supported
 - `/config` shows the current config
 - `/config set ...` updates the editable config fields
 
@@ -85,6 +88,13 @@ The backend owns the Telegram poller. That means:
 - message handling happens in the backend
 - Telegram shows a typing indicator while the backend is working on a normal chat request
 - Telegram continues to work after the TUI is closed
+
+## Update and maintenance notes
+
+- apfelclaw checks in the background whether your installed `apfel` version is current
+- Homebrew installs are compared against the Homebrew formula version, not just the GitHub release feed
+- Upgrade and restart actions are explicit and require a second confirmation command in Telegram
+- Restarting or upgrading `apfel` briefly interrupts model requests while the backend waits for `apfel` to become healthy again
 
 ## Storage
 

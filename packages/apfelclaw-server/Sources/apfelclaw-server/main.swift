@@ -13,6 +13,9 @@ extension EditableAppConfigUpdate: Content {}
 extension RemoteControlStatus: Content {}
 extension TelegramRemoteControlStatus: Content {}
 extension TelegramRemoteControlSetupRequest: Content {}
+extension ApfelMaintenanceState: Content {}
+extension ApfelStatusResponse: Content {}
+extension ApfelActionResponse: Content {}
 
 private struct CreateSessionRequest: Content {
     let title: String?
@@ -46,11 +49,13 @@ struct ApfelClawServerMain {
             try await app.execute()
             signalHandler.cancel()
             bootstrap.telegramRemoteControlProvider.shutdown()
+            await bootstrap.apfelUpdateService.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
             try? await app.asyncShutdown()
         } catch {
             signalHandler.cancel()
             bootstrap.telegramRemoteControlProvider.shutdown()
+            await bootstrap.apfelUpdateService.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
             try? await app.asyncShutdown()
             throw error
@@ -91,6 +96,27 @@ struct ApfelClawServerMain {
 
         app.get("remotecontrol", "providers", "telegram") { _ async in
             await bootstrap.remoteControlService.telegramStatus()
+        }
+
+        app.get("apfel", "status") { _ async in
+            let maintenance = await bootstrap.apfelMaintenanceService.currentState()
+            return await bootstrap.apfelUpdateService.currentResponse(maintenance: maintenance)
+        }
+
+        app.post("apfel", "restart") { _ async throws in
+            do {
+                return try await bootstrap.apfelMaintenanceService.restart()
+            } catch let error as AppError {
+                throw Abort(.badRequest, reason: error.localizedDescription)
+            }
+        }
+
+        app.post("apfel", "upgrade") { _ async throws in
+            do {
+                return try await bootstrap.apfelMaintenanceService.upgrade()
+            } catch let error as AppError {
+                throw Abort(.badRequest, reason: error.localizedDescription)
+            }
         }
 
         app.post("remotecontrol", "providers", "telegram", "setup") { req async throws in
@@ -252,6 +278,8 @@ private struct ServerBootstrap {
     let conversationService: ConversationService
     let eventHub: SessionEventHub
     let apfelManager: ApfelManager
+    let apfelUpdateService: ApfelUpdateService
+    let apfelMaintenanceService: ApfelMaintenanceService
     let remoteControlService: RemoteControlService
     let telegramRemoteControlProvider: TelegramRemoteControlProvider
     let memoryStore: MemoryStore
@@ -276,6 +304,12 @@ private struct ServerBootstrap {
 
         let apfelManager = ApfelManager(config: config)
         _ = try await apfelManager.ensureServerRunning()
+        let apfelUpdateService = ApfelUpdateService(apfelManager: apfelManager)
+        let apfelMaintenanceService = ApfelMaintenanceService(
+            apfelManager: apfelManager,
+            updateService: apfelUpdateService
+        )
+        await apfelUpdateService.start()
 
         let toolRuntime = try ToolRuntime()
         let eventHub = SessionEventHub()
@@ -284,9 +318,15 @@ private struct ServerBootstrap {
             configService: configService,
             modelClient: ModelClient(),
             toolRuntime: toolRuntime,
-            eventHub: eventHub
+            eventHub: eventHub,
+            apfelMaintenanceService: apfelMaintenanceService
         )
-        let commandService = CommandService(configService: configService, conversationService: conversationService)
+        let commandService = CommandService(
+            configService: configService,
+            conversationService: conversationService,
+            apfelUpdateService: apfelUpdateService,
+            apfelMaintenanceService: apfelMaintenanceService
+        )
         let remoteControlSettingsStore = RemoteControlSettingsStore(directories: directories)
         let remoteControlService = try RemoteControlService(settingsStore: remoteControlSettingsStore)
         let telegramRemoteControlProvider = TelegramRemoteControlProvider(
@@ -303,6 +343,8 @@ private struct ServerBootstrap {
             conversationService: conversationService,
             eventHub: eventHub,
             apfelManager: apfelManager,
+            apfelUpdateService: apfelUpdateService,
+            apfelMaintenanceService: apfelMaintenanceService,
             remoteControlService: remoteControlService,
             telegramRemoteControlProvider: telegramRemoteControlProvider,
             memoryStore: memoryStore

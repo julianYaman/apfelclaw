@@ -10,6 +10,7 @@ public final class ApfelManager: @unchecked Sendable {
     private let config: AppConfig
     private var process: Process?
     private let baseURL = URL(string: "http://127.0.0.1:11434")!
+    private let lock = NSLock()
 
     public init(config: AppConfig) {
         self.config = config
@@ -40,6 +41,11 @@ public final class ApfelManager: @unchecked Sendable {
     }
 
     public func shutdownIfOwned() {
+        lock.lock()
+        let process = self.process
+        self.process = nil
+        lock.unlock()
+
         guard let process else {
             return
         }
@@ -47,6 +53,13 @@ public final class ApfelManager: @unchecked Sendable {
             process.terminate()
             process.waitUntilExit()
         }
+    }
+
+    public func ownsManagedProcess() -> Bool {
+        lock.lock()
+        let isRunning = process?.isRunning == true
+        lock.unlock()
+        return isRunning
     }
 
     public func isHealthy() async -> Bool {
@@ -64,12 +77,47 @@ public final class ApfelManager: @unchecked Sendable {
         }
     }
 
-    private func resolveApfelPath() throws -> String {
+    public func resolveApfelPath() throws -> String {
         if let path = shellWhich("apfel") {
             return path
         }
 
         throw AppError.message("`apfel` was not found in PATH. Install it before starting apfelclaw-server.")
+    }
+
+    public func installedVersion() throws -> String {
+        let executable = try resolveApfelPath()
+        let result = try CommandRunner.run(executable: executable, arguments: ["--version"], timeout: 5)
+        guard result.exitCode == 0 else {
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw AppError.message(stderr.isEmpty ? "Unable to read apfel version." : stderr)
+        }
+
+        let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard output.isEmpty == false else {
+            throw AppError.message("Unable to read apfel version.")
+        }
+        return output
+    }
+
+    public func restartOwnedServer() async throws -> ApfelStatus {
+        guard ownsManagedProcess() else {
+            throw AppError.message("apfel is not managed by apfelclaw, so it cannot be restarted automatically.")
+        }
+
+        let executable = try resolveApfelPath()
+        shutdownIfOwned()
+        try startServer(executablePath: executable)
+
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
+            if await isHealthy() {
+                return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: true)
+            }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+
+        throw AppError.message("apfel did not become healthy after restart.")
     }
 
     private func startServer(executablePath: String) throws {
@@ -85,7 +133,9 @@ public final class ApfelManager: @unchecked Sendable {
         process.standardError = handle
 
         try process.run()
+        lock.lock()
         self.process = process
+        lock.unlock()
     }
 
     private func shellWhich(_ executable: String) -> String? {

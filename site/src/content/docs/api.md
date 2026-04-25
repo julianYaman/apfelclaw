@@ -21,6 +21,9 @@ Server: apfelclaw-server/0.2.0
 | `GET` | `/health` | Health check |
 | `GET` | `/config` | Read current configuration |
 | `PATCH` | `/config` | Update configuration fields |
+| `GET` | `/apfel/status` | Read current apfel version, update, and maintenance status |
+| `POST` | `/apfel/restart` | Restart apfel when it is app-managed or running as a Homebrew service |
+| `POST` | `/apfel/upgrade` | Upgrade Homebrew-managed apfel and restart it when supported |
 | `GET` | `/tools` | List available tools |
 | `GET` | `/remotecontrol` | Read remote control provider status |
 | `GET` | `/remotecontrol/providers/telegram` | Read Telegram provider status |
@@ -90,6 +93,40 @@ Request body:
 ```
 
 `autoApproveTools` is optional and defaults to `false` when omitted.
+
+## Apfel maintenance API
+
+The apfel maintenance endpoints are local-only operational helpers for checking whether the installed `apfel` binary is current and for running explicit restart or upgrade actions.
+
+### `GET /apfel/status`
+
+Returns a JSON object with fields such as:
+
+- `installedVersion`
+- `latestVersion`
+- `installSource`
+- `updateAvailable`
+- `canUpgrade`
+- `canRestart`
+- `restartMode`
+- `lastCheckedAt`
+- `lastError`
+- `maintenance`
+
+The backend checks for updates in the background on startup and then periodically. Homebrew installs compare against the Homebrew formula feed, while non-Homebrew installs compare against the latest GitHub release.
+
+### `POST /apfel/restart`
+
+Restarts `apfel` when the backend can do so safely:
+
+- app-managed `apfel` processes started by apfelclaw
+- registered Homebrew `apfel` services
+
+When restart is unavailable, the endpoint returns a `400` with a reason string.
+
+### `POST /apfel/upgrade`
+
+Runs `brew upgrade apfel` for Homebrew-managed installs. After a successful upgrade, the backend restarts `apfel` automatically when it is app-managed or running as a registered Homebrew service. Otherwise, the response tells the user to restart `apfel` manually.
 
 ## Remote control API
 

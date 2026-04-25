@@ -52,6 +52,8 @@ bun run dev
 
 You should now see the terminal interface connected to your local backend.
 
+The TUI header will show a passive `apfel` update indicator when a newer version is available.
+
 ## Alternative: root scripts
 
 You can also use the convenience scripts from the repo root:
@@ -82,6 +84,16 @@ See the [API Reference](/docs/api) for details on reading and updating config vi
 When the assistant needs fresh local or personal data, it may ask for a clarification instead of guessing.
 
 Remote control providers store their own state separately in `~/.apfelclaw/remote-control.json`.
+
+## Apfel updates
+
+apfelclaw checks in the background whether your installed `apfel` binary is current.
+
+- Homebrew installs compare against the Homebrew formula version
+- Other installs compare against the latest GitHub release
+- `/version` shows the current backend and `apfel` version status
+- `/apfel status` shows detailed `apfel` version, update, and maintenance information
+- `/apfel restart` and `/apfel upgrade` are explicit commands that require a second `confirm` command before running
 
 ## What's next
 
