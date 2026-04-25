@@ -24,10 +24,12 @@ This project is currently macOS-only. It depends on Apple platform APIs such as 
 
 ## Prerequisites
 
-- macOS 13 or newer
+- macOS 26 Tahoe or newer
 - Swift 6.3+
 - Bun 1.0+
 - `apfel` installed and available on `PATH`
+
+apfelclaw inherits the same macOS baseline as `apfel`, because model execution is delegated to the local `apfel` server.
 
 ## Run locally
 

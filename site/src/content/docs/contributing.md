@@ -16,7 +16,7 @@ Thanks for contributing to apfelclaw. The project is still compact, so the goal 
 
 **Required:**
 
-- macOS 13 or newer
+- macOS 26 Tahoe or newer
 - Swift 6.3+
 - Bun 1.0+
 - `apfel` installed and available on `PATH`

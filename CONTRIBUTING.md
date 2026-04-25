@@ -12,7 +12,7 @@ Thanks for contributing. This project is still compact, so the goal is to keep t
 
 Required:
 
-- macOS 13 or newer
+- macOS 26 Tahoe or newer
 - Swift 6.3+
 - Bun 1.0+
 - `apfel` installed and available on `PATH`

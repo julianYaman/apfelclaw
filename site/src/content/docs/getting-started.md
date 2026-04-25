@@ -8,12 +8,12 @@ order: 1
 
 Before running apfelclaw, make sure you have the following installed:
 
-- **macOS 13** or newer
+- **macOS 26 Tahoe** or newer
 - **Swift 6.3+**
 - **Bun 1.0+**
 - **apfel** installed and available on your `PATH` ([github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel))
 
-apfelclaw depends on Apple platform APIs (EventKit, Apple Mail, Spotlight) and uses `apfel` for on-device model execution. It is macOS-only.
+apfelclaw depends on Apple platform APIs (EventKit, Apple Mail, Spotlight) and uses `apfel` for on-device model execution. It is macOS-only, and its effective runtime requirement matches `apfel`.
 
 ## Project structure
 
