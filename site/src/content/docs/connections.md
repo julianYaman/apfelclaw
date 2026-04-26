@@ -18,7 +18,7 @@ Connections are intended to keep the same core behavior as the local TUI:
 - The backend still owns sessions, routing, tools, and persistence
 - Remote messages still flow through the same `IntentRouter` and tool execution path
 - The configured `assistantName` is reused across clients
-- The local TUI is used for onboarding and status, but the backend keeps running after setup
+- The local CLI and TUI can both drive setup and status, but the backend keeps running after setup
 
 ## Security model
 
@@ -33,12 +33,12 @@ Other Telegram chats and other Telegram accounts are ignored.
 
 ## Local setup flow
 
-Remote providers are configured from the TUI with `/remotecontrol` commands.
+Remote providers can be configured during first-run onboarding or later from the TUI with `/remotecontrol` commands.
 
 Typical flow:
 
-1. Start the backend with `./apfelclaw`
-2. Open the TUI with `bun run dev`
+1. Run `./apfelclaw` and optionally complete Telegram setup during onboarding
+2. Or, if the backend is already running, open the TUI with `./apfelclaw chat` or `bun run dev`
 3. Run `/remotecontrol setup telegram <botToken>`
 4. Send a private message to the Telegram bot
 5. Run `/remotecontrol status telegram` to confirm the approved chat and user

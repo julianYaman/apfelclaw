@@ -213,7 +213,7 @@ function formatApfelStatusSummary(status: ApfelStatusResponse) {
 
 function formatVersionSummary(serverVersion: string | null, apfelStatus: ApfelStatusResponse | null) {
   const lines = [
-    serverVersion ? `Apfelclaw server version: ${serverVersion}` : "Server version unavailable.",
+    serverVersion ? `Apfelclaw version: ${serverVersion}` : "Server version unavailable.",
   ]
 
   if (apfelStatus) {
@@ -345,7 +345,7 @@ function App({ shutdown }: AppProps) {
   const [session, setSession] = useState<SessionRecord | null>(null)
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [input, setInput] = useState("")
-  const [status, setStatus] = useState("Connecting to apfelclaw-server…")
+  const [status, setStatus] = useState("Connecting to apfelclaw backend…")
   const [serverVersion, setServerVersion] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
@@ -496,7 +496,7 @@ function App({ shutdown }: AppProps) {
       if (abortController.signal.aborted) return
       if (!mountedRef.current) return
       setStatus(
-        formatReconnectHint(error instanceof Error ? error.message : "Unable to connect to apfelclaw-server."),
+        formatReconnectHint(error instanceof Error ? error.message : "Unable to connect to the apfelclaw backend."),
       )
     } finally {
       if (requestAbortRef.current === abortController) {
@@ -585,7 +585,7 @@ function App({ shutdown }: AppProps) {
             "/new starts a fresh session.",
             "/quit exits the TUI.",
             "/help shows this message.",
-            "/version shows the server and apfel version.",
+            "/version shows the apfelclaw and apfel version.",
             "/apfel status shows update and maintenance status.",
             "/apfel restart asks for restart confirmation.",
             "/apfel restart confirm restarts apfel when supported.",

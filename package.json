@@ -5,8 +5,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:server": "swift run --package-path packages/apfelclaw-server apfelclaw-server",
+    "dev:cli": "node apps/cli/src/index.mjs",
+    "dev:server": "swift run --package-path packages/apfelclaw-server apfelclaw-backend",
     "test:server": "swift test --package-path packages/apfelclaw-server",
-    "dev:tui": "bun --cwd apps/tui run dev"
+    "dev:tui": "bun --cwd apps/tui run dev",
+    "build:tui:chat": "bun run --cwd apps/tui build:chat",
+    "build:release": "node scripts/build-release.mjs"
   }
 }

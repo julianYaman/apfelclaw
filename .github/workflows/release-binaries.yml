@@ -1,0 +1,47 @@
+name: Build release bundles
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-arm64:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release bundle
+        run: node scripts/build-release.mjs
+
+      - name: Verify packaged CLI
+        run: |
+          bundle_dir=$(printf '%s\n' dist/release/apfelclaw-v*-darwin-arm64)
+          "$bundle_dir/bin/apfelclaw" --help >/dev/null
+          "$bundle_dir/bin/apfelclaw" --status >/dev/null
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apfelclaw-release-darwin-arm64
+          path: dist/release/apfelclaw-v*-darwin-arm64.tar.gz*
+          if-no-files-found: error
+
+      - name: Publish GitHub release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/apfelclaw-v*-darwin-arm64.tar.gz
+            dist/release/apfelclaw-v*-darwin-arm64.tar.gz.sha256

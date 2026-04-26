@@ -82,7 +82,7 @@ public final class ApfelManager: @unchecked Sendable {
             return path
         }
 
-        throw AppError.message("`apfel` was not found in PATH. Install it before starting apfelclaw-server.")
+        throw AppError.message("`apfel` was not found in PATH. Install it before starting apfelclaw.")
     }
 
     public func installedVersion() throws -> String {

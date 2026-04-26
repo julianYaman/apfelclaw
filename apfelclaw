@@ -5,4 +5,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "$SCRIPT_DIR"
-exec swift run --package-path packages/apfelclaw-server apfelclaw-server "$@"
+exec node "$SCRIPT_DIR/apps/cli/src/index.mjs" "$@"

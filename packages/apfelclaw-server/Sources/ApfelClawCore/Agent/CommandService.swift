@@ -150,7 +150,7 @@ public actor CommandService {
             "Slash commands:",
             "/new starts a fresh session.",
             "/help shows this message.",
-            "/version shows the server and apfel version.",
+            "/version shows the apfelclaw and apfel version.",
             "/apfel status shows update and maintenance status.",
             "/apfel restart asks for restart confirmation.",
             "/apfel restart confirm restarts apfel when supported.",
@@ -169,7 +169,7 @@ public actor CommandService {
     }
 
     private func versionText() async -> String {
-        var lines = ["Apfelclaw server version: \(AppVersion.serverHeaderValue)"]
+        var lines = ["Apfelclaw version: \(AppVersion.serverHeaderValue)"]
 
         guard let apfelUpdateService, let apfelMaintenanceService else {
             return lines.joined(separator: "\n")

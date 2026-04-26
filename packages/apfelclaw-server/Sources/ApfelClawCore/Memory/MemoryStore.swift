@@ -146,6 +146,17 @@ public final class MemoryStore: @unchecked Sendable {
         return sessions
     }
 
+    public func sessionCount() throws -> Int {
+        let statement = try prepare("SELECT COUNT(*) FROM sessions;")
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw AppError.message("Unable to count sessions.")
+        }
+
+        return Int(sqlite3_column_int(statement, 0))
+    }
+
     public func listMessages(sessionID: Int64, limit: Int = 20) throws -> [(role: String, content: String)] {
         let sql = """
         SELECT role, content FROM messages

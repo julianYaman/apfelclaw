@@ -1,11 +1,14 @@
 import Foundation
 
-public struct AppDirectories {
+public struct AppDirectories: Sendable {
     public let home: URL
     public let configRoot: URL
     public let cacheRoot: URL
     public let logsRoot: URL
     public let sessionRoot: URL
+    public let stateURL: URL
+    public let pidFileURL: URL
+    public let serviceLogURL: URL
 
     public init(fileManager: FileManager = .default) throws {
         guard let homeDirectory = fileManager.homeDirectoryForCurrentUser as URL? else {
@@ -27,6 +30,9 @@ public struct AppDirectories {
             .appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("apfelclaw", isDirectory: true)
         self.sessionRoot = configRoot.appendingPathComponent("sessions", isDirectory: true)
+        self.stateURL = configRoot.appendingPathComponent("state.json")
+        self.pidFileURL = configRoot.appendingPathComponent("apfelclaw.pid")
+        self.serviceLogURL = logsRoot.appendingPathComponent("apfelclaw.log")
     }
 
     public func bootstrap(fileManager: FileManager = .default) throws {

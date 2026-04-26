@@ -11,7 +11,7 @@ The apfelclaw backend exposes a local REST API on `127.0.0.1:4242`. All endpoint
 Every HTTP response includes:
 
 ```
-Server: apfelclaw-server/0.2.0
+Server: apfelclaw/0.2.0
 ```
 
 ## Endpoints
@@ -19,6 +19,7 @@ Server: apfelclaw-server/0.2.0
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
+| `GET` | `/status` | Aggregate backend, apfel, session, and remote-control status |
 | `GET` | `/config` | Read current configuration |
 | `PATCH` | `/config` | Update configuration fields |
 | `GET` | `/apfel/status` | Read current apfel version, update, and maintenance status |
@@ -35,6 +36,22 @@ Server: apfelclaw-server/0.2.0
 | `GET` | `/sessions/:id/messages` | Get messages for a session |
 | `POST` | `/sessions/:id/messages` | Send a message to a session |
 | `WS` | `/sessions/:id/stream` | WebSocket stream for live session events |
+
+## Status API
+
+### `GET /status`
+
+Returns an aggregate status payload with fields such as:
+
+- `version`
+- `startedAt`
+- `uptimeSeconds`
+- `onboardingCompleted`
+- `sessionCount`
+- `apfel`
+- `remoteControl`
+
+This is the main endpoint used by the Node-based `apfelclaw` command tool for `apfelclaw --status` when the backend is reachable.
 
 ## Config API
 
@@ -173,6 +190,7 @@ This is used by the TUI client to provide a live, streaming experience. Other cl
 ## Storage
 
 - Config: `~/.apfelclaw/config.json`
+- Install state: `~/.apfelclaw/state.json`
 - Remote control config: `~/.apfelclaw/remote-control.json`
 - Memory: `~/.apfelclaw/memory.sqlite`
 

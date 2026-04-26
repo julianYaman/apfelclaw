@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install prerequisites, start the backend server, and connect the TUI client.
+description: Install apfelclaw, complete onboarding, and launch the separate chat app.
 order: 1
 ---
 
@@ -8,12 +8,19 @@ order: 1
 
 Before running apfelclaw, make sure you have the following installed:
 
-- **macOS 26 Tahoe** or newer
-- **Swift 6.3+**
-- **Bun 1.0+**
+- **macOS 26 Tahoe** or newer on Apple Silicon
 - **apfel** installed and available on your `PATH` ([github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel))
 
-apfelclaw depends on Apple platform APIs (EventKit, Apple Mail, Spotlight) and uses `apfel` for on-device model execution. It is macOS-only, and its effective runtime requirement matches `apfel`.
+apfelclaw depends on Apple platform APIs (EventKit, Apple Mail, Spotlight) and uses `apfel` for on-device model execution. It is macOS-only, and its effective runtime requirement matches `apfel`. Homebrew installs also bring in the Node runtime used by the `apfelclaw` command tool.
+
+## Install with Homebrew
+
+```bash
+brew tap julianYaman/apfelclaw
+brew install apfelclaw
+```
+
+The current release target is Apple Silicon on macOS Tahoe (macOS 26) or newer.
 
 ## Project structure
 
@@ -22,46 +29,50 @@ The repository is organized as a small monorepo:
 | Path | Description |
 |---|---|
 | `packages/apfelclaw-server` | Swift backend runtime — local API, tool execution, conversation management, and persistence |
-| `apps/tui` | Terminal UI client built with [OpenTUI](https://opentui.com) and Bun |
-| `./apfelclaw` | Convenience launcher script for the backend server |
+| `apps/cli` | Node-based `apfelclaw` command tool with onboarding, status, updates, and service lifecycle |
+| `apps/tui` | Separate terminal chat application built with [OpenTUI](https://opentui.com) |
+| `./apfelclaw` | Convenience launcher script for the Node CLI in this repo |
 
-## Start the backend server
+## Run onboarding
 
-From the repository root:
-
-```bash
-./apfelclaw
-```
-
-The server starts listening on `127.0.0.1:4242`. This launcher script builds and runs the Swift server package.
-
-## Install TUI dependencies
-
-In a second terminal:
+After installation, run:
 
 ```bash
-cd apps/tui
-bun install
+apfelclaw
 ```
 
-## Start the TUI client
+The first run asks for your basic config, starts the backend automatically, and can optionally set up Telegram remote control.
+
+If you later need a foreground backend manually, run:
 
 ```bash
-bun run dev
+apfelclaw serve
 ```
 
-You should now see the terminal interface connected to your local backend.
+## Launch the chat app
+
+Once the backend is already running:
+
+```bash
+apfelclaw chat
+```
+
+If the backend is down, `apfelclaw chat` tells you to run `apfelclaw serve`.
+
+You should now see the separate chat application connected to your local backend.
 
 The TUI header will show a passive `apfel` update indicator when a newer version is available.
 
-## Alternative: root scripts
+## Development commands
 
-You can also use the convenience scripts from the repo root:
+If you are working from a source checkout, you can also use the convenience scripts from the repo root:
 
 ```bash
-./apfelclaw          # start backend server
-npm run dev:server   # alternative server start
-npm run dev:tui      # start TUI client
+./apfelclaw          # onboarding or help/status
+./apfelclaw serve    # foreground backend
+./apfelclaw chat     # launch chat client
+npm run dev:server   # alternative foreground backend
+npm run dev:tui      # start TUI client from source
 ```
 
 ## Configuration
@@ -83,7 +94,7 @@ See the [API Reference](/docs/api) for details on reading and updating config vi
 
 When the assistant needs fresh local or personal data, it may ask for a clarification instead of guessing.
 
-Remote control providers store their own state separately in `~/.apfelclaw/remote-control.json`.
+Remote control providers store their own state separately in `~/.apfelclaw/remote-control.json`. Onboarding state is stored in `~/.apfelclaw/state.json`.
 
 ## Apfel updates
 

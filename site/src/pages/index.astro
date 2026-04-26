@@ -2,13 +2,16 @@
 import Base from "../layouts/Base.astro";
 
 const repo = "julianyaman/apfelclaw";
+const brewInstall = `brew tap julianYaman/apfelclaw
+brew install apfelclaw`;
 
-const installStep = `cd apps/tui
-bun install`;
+const installStep = `apfelclaw
+# complete onboarding`;
 
-const altScripts = `./apfelclaw          # backend
-npm run dev:server   # alternative
-npm run dev:tui      # TUI client`;
+const altScripts = `apfelclaw setup       # rerun onboarding
+apfelclaw serve       # foreground backend
+apfelclaw chat        # launch chat app
+apfelclaw --status    # rich local status`;
 
 const configExample = JSON.stringify(
   {
@@ -73,6 +76,9 @@ const configExample = JSON.stringify(
           rel="noopener noreferrer">apfel</a
         >.
       </p>
+      <div class="hero-install">
+        <pre><code>{brewInstall}</code></pre>
+      </div>
       <div class="hero-actions">
         <a href={`https://github.com/${repo}`} class="btn btn-primary">
           View on GitHub
@@ -145,7 +151,7 @@ const configExample = JSON.stringify(
       <div class="card-grid">
         <div class="card">
           <div class="card-icon">⚙️</div>
-          <h3>apfelclaw-server</h3>
+          <h3>Swift backend</h3>
           <p>
             Swift backend runtime — local API, tool execution, conversation
             management, and persistence.
@@ -154,9 +160,9 @@ const configExample = JSON.stringify(
         </div>
         <div class="card">
           <div class="card-icon">🖥️</div>
-          <h3>TUI client</h3>
+          <h3>Chat app</h3>
           <p>
-            Terminal user interface built with <a
+            Separate terminal chat application built with <a
               href="https://opentui.dev"
               target="_blank"
               rel="noopener noreferrer">OpenTUI</a
@@ -168,19 +174,19 @@ const configExample = JSON.stringify(
           <div class="card-icon">✈️</div>
           <h3>Telegram connection</h3>
           <p>
-            Optional remote access through a private Telegram bot, linked from
-            the TUI and handled by the local backend.
+            Optional remote access through a private Telegram bot, linked during
+            onboarding or later from chat, and handled by the local backend.
           </p>
           <code>/remotecontrol setup telegram</code>
         </div>
         <div class="card">
           <div class="card-icon">🚀</div>
-          <h3>Launcher</h3>
+          <h3>Command tool</h3>
           <p>
-            A convenience shell script at the repo root that starts the backend
-            server in one command.
+            The Node-based <code>apfelclaw</code> CLI owns onboarding, service
+            lifecycle, status, updates, and chat launch.
           </p>
-          <code>./apfelclaw</code>
+          <code>apfelclaw</code>
         </div>
       </div>
     </div>
@@ -194,7 +200,8 @@ const configExample = JSON.stringify(
         Currently macOS-only. The backend depends on Apple platform APIs like
         EventKit, Apple Mail, and Spotlight-backed file search, and expects <code
           >apfel</code
-        > to be installed locally for model execution.
+        > to be installed locally for model execution. Homebrew installs also
+        pull in the Node runtime for the command tool.
       </p>
     </div>
   </section>
@@ -204,9 +211,10 @@ const configExample = JSON.stringify(
     <div class="container">
       <h2>Prerequisites</h2>
       <ul class="prereq-list">
-        <li><strong>macOS 13</strong> or newer</li>
-        <li><strong>Swift 6.3+</strong></li>
-        <li><strong>Bun 1.0+</strong></li>
+        <li><strong>Apple Silicon</strong> with macOS 26 Tahoe or newer</li>
+        <li><strong>Node.js 18+</strong> if installing from source</li>
+        <li><strong>Swift 6.3+</strong> if building the backend from source</li>
+        <li><strong>Bun 1.0+</strong> only for local chat development builds</li>
         <li>
           <code>apfel</code> installed and available on <code>PATH</code>
         </li>
@@ -222,25 +230,29 @@ const configExample = JSON.stringify(
         <div class="step">
           <span class="step-num">1</span>
           <div>
-            <h3>Start the backend server</h3>
-            <pre><code>./apfelclaw</code></pre>
+            <h3>Install with Homebrew</h3>
+            <pre><code>{brewInstall}</code></pre>
             <p class="step-note">
-              The server listens on <code>127.0.0.1:4242</code>.
+              This installs the command tool, chat app, and backend runtime.
             </p>
           </div>
         </div>
         <div class="step">
           <span class="step-num">2</span>
           <div>
-            <h3>Install TUI dependencies</h3>
+            <h3>Run onboarding</h3>
             <pre><code>{installStep}</code></pre>
+            <p class="step-note">
+              The onboarding guide saves your defaults, starts the backend, and
+              can optionally set up Telegram.
+            </p>
           </div>
         </div>
         <div class="step">
           <span class="step-num">3</span>
           <div>
-            <h3>Start the TUI client</h3>
-            <pre><code>bun run dev</code></pre>
+            <h3>Launch chat</h3>
+            <pre><code>apfelclaw chat</code></pre>
           </div>
         </div>
       </div>
@@ -294,7 +306,7 @@ const configExample = JSON.stringify(
         </table>
       </div>
       <p class="api-note">
-        Response header: <code>Server: apfelclaw-server/0.1.0</code>
+        Response header: <code>Server: apfelclaw/0.2.0</code>
       </p>
     </div>
   </section>
@@ -305,7 +317,7 @@ const configExample = JSON.stringify(
       <h2>Configuration</h2>
       <p class="section-lead">
         Config lives in <code>~/.apfelclaw/config.json</code> and persists
-        across server restarts. SQLite memory is stored at <code
+        across server restarts. Install state is stored at <code>~/.apfelclaw/state.json</code>. SQLite memory is stored at <code
           >~/.apfelclaw/memory.sqlite</code
         >.
       </p>
@@ -480,6 +492,12 @@ const configExample = JSON.stringify(
     color: var(--text-muted);
     max-width: 540px;
     margin: 0 auto 2rem;
+  }
+
+  .hero-install {
+    max-width: 440px;
+    margin: 0 auto 1.5rem;
+    text-align: left;
   }
 
   .hero-actions {

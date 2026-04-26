@@ -1,0 +1,14 @@
+{
+  "name": "@apfelclaw/cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "apfelclaw": "src/index.mjs"
+  },
+  "dependencies": {
+    "ink": "^5.2.1",
+    "ink-text-input": "^6.0.0",
+    "ora": "^8.2.0",
+    "react": "^18.3.1"
+  }
+}

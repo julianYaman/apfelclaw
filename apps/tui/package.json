@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/index.tsx"
+    "dev": "bun run src/index.tsx",
+    "build:chat": "bun build src/index.tsx --compile --outfile dist/apfelclaw-chat"
   },
   "dependencies": {
     "@opentui/core": "^0.1.63",

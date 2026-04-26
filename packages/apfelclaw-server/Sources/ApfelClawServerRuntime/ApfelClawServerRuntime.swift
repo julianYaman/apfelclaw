@@ -16,6 +16,7 @@ extension TelegramRemoteControlSetupRequest: Content {}
 extension ApfelMaintenanceState: Content {}
 extension ApfelStatusResponse: Content {}
 extension ApfelActionResponse: Content {}
+extension ServerStatusResponse: Content {}
 
 private struct CreateSessionRequest: Content {
     let title: String?
@@ -31,29 +32,33 @@ private struct SessionMessagesResponse: Content {
     let messages: [SessionMessage]
 }
 
-@main
-struct ApfelClawServerMain {
-    static func main() async throws {
+public enum ApfelClawServerRuntime {
+    public static func run(pidFileURL: URL? = nil) async throws {
+        let startedAt = Date()
+        let startedAtString = ISO8601DateFormatter().string(from: startedAt)
         let bootstrap = try await ServerBootstrap.make()
         let app = try await Application.make(.development)
         let signalHandler = GracefulShutdownHandler(application: app)
+        let pidFile = try PIDFileScope(url: pidFileURL)
 
         app.http.server.configuration.hostname = "127.0.0.1"
         app.http.server.configuration.port = 4242
         app.middleware.use(ServerVersionMiddleware())
         app.middleware.use(DebugRequestLoggingMiddleware(configService: bootstrap.configService))
 
-        try routes(app: app, bootstrap: bootstrap)
+        try routes(app: app, bootstrap: bootstrap, startedAt: startedAt, startedAtString: startedAtString)
         signalHandler.install()
         do {
             try await app.execute()
             signalHandler.cancel()
+            try pidFile.cleanup()
             bootstrap.telegramRemoteControlProvider.shutdown()
             await bootstrap.apfelUpdateService.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
             try? await app.asyncShutdown()
         } catch {
             signalHandler.cancel()
+            try? pidFile.cleanup()
             bootstrap.telegramRemoteControlProvider.shutdown()
             await bootstrap.apfelUpdateService.shutdown()
             bootstrap.apfelManager.shutdownIfOwned()
@@ -62,9 +67,34 @@ struct ApfelClawServerMain {
         }
     }
 
-    private static func routes(app: Application, bootstrap: ServerBootstrap) throws {
+    private static func routes(
+        app: Application,
+        bootstrap: ServerBootstrap,
+        startedAt: Date,
+        startedAtString: String
+    ) throws {
         app.get("health") { _ in
             ["status": "ok"]
+        }
+
+        app.get("status") { _ async in
+            let maintenance = await bootstrap.apfelMaintenanceService.currentState()
+            let apfelStatus = await bootstrap.apfelUpdateService.currentResponse(maintenance: maintenance)
+            let state = (try? bootstrap.installStateStore.current(defaultInstallSource: AppInstallSourceDetector.detectCurrentInstallSource()))
+                ?? InstallState(installSource: AppInstallSourceDetector.detectCurrentInstallSource())
+            let uptime = max(0, Int(Date().timeIntervalSince(startedAt)))
+            let sessionCount = (try? bootstrap.memoryStore.sessionCount()) ?? 0
+            let remoteControl = await bootstrap.remoteControlService.current()
+
+            return ServerStatusResponse(
+                version: AppVersion.current,
+                startedAt: startedAtString,
+                uptimeSeconds: uptime,
+                onboardingCompleted: state.onboardingCompleted,
+                sessionCount: sessionCount,
+                apfel: apfelStatus,
+                remoteControl: remoteControl
+            )
         }
 
         app.get("config") { _ async in
@@ -272,7 +302,29 @@ private final class GracefulShutdownHandler {
     }
 }
 
-private struct ServerBootstrap {
+private struct PIDFileScope {
+    let url: URL?
+
+    init(url: URL?) throws {
+        self.url = url
+        guard let url else {
+            return
+        }
+        try String(ProcessInfo.processInfo.processIdentifier).write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    func cleanup() throws {
+        guard let url else {
+            return
+        }
+
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+}
+
+private struct ServerBootstrap: @unchecked Sendable {
     let configService: ConfigService
     let toolRuntime: ToolRuntime
     let conversationService: ConversationService
@@ -283,6 +335,7 @@ private struct ServerBootstrap {
     let remoteControlService: RemoteControlService
     let telegramRemoteControlProvider: TelegramRemoteControlProvider
     let memoryStore: MemoryStore
+    let installStateStore: InstallStateStore
 
     static func make() async throws -> ServerBootstrap {
         let directories = try AppDirectories()
@@ -291,6 +344,8 @@ private struct ServerBootstrap {
         let settingsStore = SettingsStore(directories: directories)
         let configService = try ConfigService(settingsStore: settingsStore)
         let config = await configService.currentAppConfig()
+        let installStateStore = InstallStateStore(directories: directories)
+        _ = try? installStateStore.refreshRuntimeState(installSource: AppInstallSourceDetector.detectCurrentInstallSource())
 
         let memoryStore = MemoryStore(directories: directories)
         try memoryStore.open()
@@ -347,7 +402,8 @@ private struct ServerBootstrap {
             apfelMaintenanceService: apfelMaintenanceService,
             remoteControlService: remoteControlService,
             telegramRemoteControlProvider: telegramRemoteControlProvider,
-            memoryStore: memoryStore
+            memoryStore: memoryStore,
+            installStateStore: installStateStore
         )
     }
 }

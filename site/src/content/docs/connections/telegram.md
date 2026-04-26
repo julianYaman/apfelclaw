@@ -19,11 +19,12 @@ After setup, Telegram can keep talking to apfelclaw even when the TUI is closed.
 
 ## Prerequisites
 
-- The backend is running locally with `./apfelclaw`
-- The TUI is available for onboarding
+- The backend is running locally with `apfelclaw serve` or through the first-run onboarding flow
 - You have created a Telegram bot with BotFather and have a bot token
 
 ## Setup
+
+You can do this during first-run onboarding in `apfelclaw`, or later from the chat app.
 
 Run this inside the TUI:
 
@@ -52,7 +53,7 @@ The status output should show:
 
 That means the provider is linked to one private chat and one Telegram user account.
 
-## Useful TUI commands
+## Useful chat commands
 
 ```text
 /remotecontrol
@@ -84,10 +85,10 @@ Example:
 
 The backend owns the Telegram poller. That means:
 
-- setup happens from the TUI
+- setup can happen during `apfelclaw` onboarding or from the chat app
 - message handling happens in the backend
 - Telegram shows a typing indicator while the backend is working on a normal chat request
-- Telegram continues to work after the TUI is closed
+- Telegram continues to work after the chat app is closed
 
 ## Update and maintenance notes
 

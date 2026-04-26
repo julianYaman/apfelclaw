@@ -15,62 +15,98 @@
 The repository is organized as a small monorepo:
 
 - `packages/apfelclaw-server`: Swift backend runtime, local API, tool execution, and persistence
-- `apps/tui`: OpenTUI client built with Bun
-- `apfelclaw`: convenience launcher for the backend server
+- `apps/cli`: Node-based `apfelclaw` command tool with onboarding and lifecycle commands
+- `apps/tui`: Separate chat application
+- `apfelclaw`: convenience launcher for the Node CLI in this repo
 
 ## Status
 
-This project is currently macOS-only. It depends on Apple platform APIs such as EventKit, Apple Mail, and Spotlight-backed file search, and it expects `apfel` to be installed locally for model execution.
+This project currently targets Apple Silicon Macs running macOS 26 Tahoe or newer. It depends on Apple platform APIs such as EventKit, Apple Mail, and Spotlight-backed file search, and it expects `apfel` to be installed locally for model execution.
+
+## Install with Homebrew
+
+```bash
+brew tap julianYaman/apfelclaw
+brew install apfelclaw
+```
+
+The Homebrew formula can install the Node-based `apfelclaw` command tool, the separate chat app, and the Swift backend runtime together.
 
 ## Prerequisites
 
 - macOS 26 Tahoe or newer
-- Swift 6.3+
-- Bun 1.0+
+- Node.js 18+
+- Bun 1.0+ for local chat development or source builds
+- Swift 6.3+ for backend development or source builds
 - `apfel` installed and available on `PATH`
 
 apfelclaw inherits the same macOS baseline as `apfel`, because model execution is delegated to the local `apfel` server.
 
 ## Run locally
 
-1. Start the backend server:
+1. Install workspace dependencies:
+
+```bash
+bun install
+```
+
+2. Run the CLI and complete onboarding:
 
 ```bash
 ./apfelclaw
 ```
 
-The server listens on `127.0.0.1:4242`.
+The CLI runs the onboarding flow, can optionally set up Telegram remote control, and starts the backend in the background.
 
-This launcher script starts the Swift server package from the repo root.
+This launcher script runs the Node `apfelclaw` command tool from the repo root.
 
-2. In a second terminal, install the TUI dependencies:
+3. If you want to run the chat app from source during development:
 
 ```bash
 cd apps/tui
 bun install
 ```
 
-3. Start the TUI client:
+4. Start the TUI client:
 
 ```bash
 bun run dev
+```
+
+Or use the chat command through the CLI:
+
+```bash
+./apfelclaw chat
 ```
 
 You can also use the root scripts:
 
 ```bash
 ./apfelclaw
+./apfelclaw serve
+./apfelclaw chat
 npm run dev:server
 npm run dev:tui
 ```
 
 The backend keeps using `apfel` for model execution.
 
+## CLI commands
+
+- `apfelclaw`: onboarding on first run, then help and local status
+- `apfelclaw setup`: re-run the onboarding guide
+- `apfelclaw serve`: run the backend in the foreground
+- `apfelclaw chat`: launch the terminal chat client when the backend is already running
+- `apfelclaw stop`: stop the managed backend
+- `apfelclaw --status`: print backend, apfel, and remote-control status
+- `apfelclaw --update`: update apfelclaw and Homebrew-managed apfel
+
 ## Development
 
 API endpoints:
 
 - `GET /health`
+- `GET /status`
 - `GET /config`
 - `PATCH /config`
 - `GET /tools`
@@ -82,7 +118,7 @@ API endpoints:
 
 HTTP response headers:
 
-- `Server: apfelclaw-server/0.2.0`
+- `Server: apfelclaw/0.2.0`
 
 Config API:
 
@@ -105,6 +141,7 @@ Config API:
 ## Contributor notes
 
 - Config lives in `~/.apfelclaw/config.json` and persists across server restarts.
+- Install state lives in `~/.apfelclaw/state.json`.
 - SQLite memory lives in `~/.apfelclaw/memory.sqlite`.
 - The current TUI is the first client; other clients can target the same local API later.
 - `Ctrl+C` triggers a graceful server shutdown before process exit.

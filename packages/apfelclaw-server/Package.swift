@@ -5,11 +5,12 @@ import PackageDescription
 let package = Package(
     name: "apfelclaw-server",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v26),
     ],
     products: [
         .library(name: "ApfelClawCore", targets: ["ApfelClawCore"]),
-        .executable(name: "apfelclaw-server", targets: ["apfelclaw-server"]),
+        .library(name: "ApfelClawServerRuntime", targets: ["ApfelClawServerRuntime"]),
+        .executable(name: "apfelclaw-backend", targets: ["apfelclaw-backend"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
@@ -28,13 +29,20 @@ let package = Package(
                 .linkedFramework("IOKit"),
             ]
         ),
-        .executableTarget(
-            name: "apfelclaw-server",
+        .target(
+            name: "ApfelClawServerRuntime",
             dependencies: [
                 "ApfelClawCore",
                 .product(name: "Vapor", package: "vapor"),
             ],
-            path: "Sources/apfelclaw-server"
+            path: "Sources/ApfelClawServerRuntime"
+        ),
+        .executableTarget(
+            name: "apfelclaw-backend",
+            dependencies: [
+                "ApfelClawServerRuntime",
+            ],
+            path: "Sources/apfelclaw-backend"
         ),
         .testTarget(
             name: "AgentTests",
@@ -58,7 +66,7 @@ let package = Package(
         ),
         .testTarget(
             name: "IntegrationTests",
-            dependencies: ["ApfelClawCore"],
+            dependencies: ["ApfelClawCore", "ApfelClawServerRuntime"],
             path: "Tests/IntegrationTests"
         ),
     ],
