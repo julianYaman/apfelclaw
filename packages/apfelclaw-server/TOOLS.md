@@ -31,12 +31,27 @@ Current tools:
 
 - Purpose: Read upcoming events from the user's calendars for a requested time range.
 - Use when: The user asks about meetings or schedule items for a natural-language time range.
-- Avoid when: The user wants to create or edit events.
+- Avoid when: The user wants to create, edit, or delete events.
 - Read-only: yes
 - Confirmation required: no
 - Parameters:
   - `timeframe` string, required
   - `limit` integer, optional
+
+## `add_calendar_event`
+
+- Purpose: Create one calendar event in the user's calendars.
+- Use when: The user asks to add, create, or schedule a calendar event, meeting, or appointment.
+- Avoid when: The user wants to list events, edit or delete an existing event, or create a recurring event.
+- Read-only: no
+- Confirmation required: yes
+- Parameters:
+  - `title` string, required
+  - `starts_at` string, required
+  - `ends_at` string, optional
+  - `duration_minutes` integer, optional
+  - `location` string, optional
+  - `notes` string, optional
 
 ## `get_mac_status`
 

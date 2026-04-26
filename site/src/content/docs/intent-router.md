@@ -55,6 +55,8 @@ The model returns a JSON object:
 }
 ```
 
+The same stage also routes calendar write requests. For example, a message like "Add my weekly sync meeting for today at 14:00 to my calendar" should select `add_calendar_event`.
+
 If the model selects a valid tool, routing is complete. If it selects `answer_directly`, the router normally keeps that decision unless Stage 2 recovers a tool-backed follow-up.
 
 ## Stage 2: Follow-up reuse
@@ -64,7 +66,7 @@ This stage only runs when two conditions are met:
 1. Stage 1 did **not** select a tool
 2. There is a recent approved tool call whose module has **`supportsFollowUpReuse`** enabled
 
-Currently, `list_calendar_events` (calendar domain) and `list_recent_mail` (mail domain) support follow-up reuse. File and terminal tools do not.
+Currently, `list_calendar_events` (calendar domain) and `list_recent_mail` (mail domain) support follow-up reuse. `add_calendar_event` does not, because reusing write-capable tools is riskier than reusing read-only lookups. File and terminal tools do not.
 
 The model is asked: "Is the user continuing the previous tool-backed request in the same domain?" It receives the prior tool's scope snapshot so it can compare what was previously covered with what the user is now asking.
 
@@ -87,7 +89,7 @@ Every routing decision includes a reason code explaining why the decision was ma
 
 | Code | Meaning |
 |---|---|
-| `fresh_personal_data` | User wants live local/personal data (calendar, mail, files, system info) |
+| `fresh_personal_data` | User wants live local/personal data or a local personal action such as creating a calendar event |
 | `same_domain_follow_up` | User is continuing a conversation in the same tool domain with changed scope |
 | `prior_result_insufficient` | The previous tool result didn't cover what the user is now asking |
 | `direct_answer_ok` | Pure chat, greeting, or stable knowledge — no tool needed |
@@ -157,3 +159,5 @@ The Intent Router follows the project's core guidelines:
 - **No keyword matching** — routing decisions are made by the model, not by scanning for trigger words. If routing needs improvement, the fix is to improve prompts, tool schemas, and context rather than adding hardcoded patterns.
 - **Local-first** — all classification happens on-device via `apfel`. No network calls are made for routing.
 - **Graceful degradation** — if the model fails to produce valid output across all retries and stages, the router asks for clarification rather than guessing.
+
+For calendar creation specifically, the router only chooses the tool. The later tool-call stage is still responsible for asking a short clarification question when timing or duration details are missing.

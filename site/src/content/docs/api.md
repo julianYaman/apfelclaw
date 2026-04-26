@@ -69,6 +69,8 @@ The `approvalMode` field controls when the user is prompted before a tool runs:
 | `ask-once-per-tool-per-session` | Prompt on the first use of each tool per session |
 | `trusted-readonly` | Auto-approve read-only tools unless a tool explicitly requires confirmation |
 
+`add_calendar_event` is a write-capable tool and is also marked as requiring confirmation, so it will always prompt before execution regardless of approval mode.
+
 ## Sessions API
 
 ### `POST /sessions`

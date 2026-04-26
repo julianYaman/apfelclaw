@@ -226,6 +226,7 @@ public enum IntentRouter {
         - "Hello." -> {"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}
         - "How are you?" -> {"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}
         - "Please show me my calendar events for today." -> {"action":"use_tool","toolName":"list_calendar_events","reasonCode":"fresh_personal_data"}
+        - "Add my weekly sync meeting for today at 14:00 to my calendar." -> {"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}
         - "Show me my recent emails." -> {"action":"use_tool","toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}
 
         Return JSON only in this shape:
@@ -244,6 +245,7 @@ public enum IntentRouter {
         - reasonCode must be direct_answer_ok or other when action is answer_directly.
         - reasonCode must not be direct_answer_ok when action is use_tool.
         - Requests to read the user's own mail, calendar, files, or current system state should use a tool when an allowed tool fits.
+        - Requests to create or change the user's own calendar events should use a tool when an allowed tool fits.
         - This stage is classification only. Never emit function calls or tool_calls.
         - Never return markdown, code fences, or extra prose.
 

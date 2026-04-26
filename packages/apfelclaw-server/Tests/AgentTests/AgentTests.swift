@@ -35,6 +35,29 @@ func intentRouterPicksToolFromModelClassification() async throws {
 }
 
 @Test
+func intentRouterPicksCalendarCreateToolFromModelClassification() async throws {
+    let runtime = try ToolRuntime()
+    let model = StubModelClient(
+        responses: [#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#]
+    )
+
+    let decision = try await IntentRouter.route(
+        messages: [("user", "Add my weekly sync meeting for today at 14:00 to my calendar.")],
+        userInput: "Add my weekly sync meeting for today at 14:00 to my calendar.",
+        sessionSummary: nil,
+        lastToolCall: nil,
+        toolRegistry: runtime.registry,
+        modelClient: model,
+        referenceDate: routerReferenceDate,
+        timeZone: routerTimeZone
+    )
+
+    #expect(decision.action == .useTool)
+    #expect(decision.toolName == "add_calendar_event")
+    #expect(decision.reasonCode == .freshPersonalData)
+}
+
+@Test
 func intentRouterFallsBackToDirectAnswerWhenClassifierSaysNoTool() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
@@ -189,6 +212,7 @@ func classifierPromptIncludesToolSpecificGuidanceForDisambiguation() throws {
     #expect(messages.count == 2)
     #expect(messages[0].content?.contains("use_when: The user asks where a file is, wants to locate a document, or needs matching file paths.") == true)
     #expect(messages[0].content?.contains("examples: Please show me my calendar events for today | What meetings do I have today? | Show my calendar for tomorrow") == true)
+    #expect(messages[0].content?.contains("examples: Add my weekly sync meeting for today at 14:00 to my calendar | Create a dentist appointment tomorrow at 9am | Schedule lunch with Sam on Friday from 12:00 to 13:00") == true)
 }
 
 @Test
@@ -263,6 +287,30 @@ func toolCallPromptLocksToSelectedTool() throws {
 }
 
 @Test
+func toolCallPromptAddsWriteSafetyGuidanceForMutableTools() throws {
+    let runtime = try ToolRuntime()
+    let selectedTool = try #require(runtime.definition(named: "add_calendar_event"))
+    let formatter = ISO8601DateFormatter()
+    let date = formatter.date(from: "2026-04-06T12:00:00Z")!
+    let timeZone = TimeZone(secondsFromGMT: 7_200)!
+
+    let prompt = ConversationService.toolCallSystemPrompt(
+        assistantName: "Apfelclaw",
+        userName: "Yaman",
+        selectedTool: selectedTool,
+        now: date,
+        timeZone: timeZone
+    )
+
+    #expect(prompt.contains(#"The router already selected the tool "add_calendar_event""#))
+    #expect(prompt.contains("This tool changes user data."))
+    #expect(prompt.contains("ask one short clarification question instead of assuming defaults"))
+    #expect(prompt.contains("use the default calendar for new events"))
+    #expect(prompt.contains("Never set 'ends_at' equal to 'starts_at'"))
+    #expect(prompt.contains("carry forward the event details already established in the recent conversation"))
+}
+
+@Test
 func modelClientNormalizesSafeCommandToolNames() {
     let toolCall = ChatToolCall(
         id: "call_1",
@@ -302,6 +350,22 @@ func modelClientPreservesCalendarArgumentsFromFencedJSON() {
 
     #expect(toolCall?.name == "list_calendar_events")
     #expect(toolCall?.argumentsJSON == #"{"start_time":"2026-04-06T17:52:07+02:00","end_time":"2026-04-06T23:59:59+02:00","calendar":"personal"}"#)
+}
+
+@Test
+func modelClientExtractsCalendarCreateToolCallWhenArgumentsAreJSONObjects() {
+    let content = """
+    ```json
+    {"tool_calls":[{"id":"call_1","type":"function","function":{"name":"add_calendar_event","arguments":{"title":"Weekly Sync Meeting","starts_at":"2026-04-28T14:00:00+02:00"}}}]}
+    ```
+    """
+
+    let toolCall = ModelClient.extractToolCall(from: content)
+
+    #expect(toolCall?.name == "add_calendar_event")
+    let arguments = try? JSONDecoder().decode([String: String].self, from: Data((toolCall?.argumentsJSON ?? "").utf8))
+    #expect(arguments?["title"] == "Weekly Sync Meeting")
+    #expect(arguments?["starts_at"] == "2026-04-28T14:00:00+02:00")
 }
 
 @Test
@@ -558,6 +622,8 @@ func toolRegistryExposesRegisteredModules() throws {
 
     #expect(runtime.registry.modules.count == runtime.availableTools.count)
     #expect(runtime.registry.module(named: "list_calendar_events")?.routingMetadata.domain == "calendar")
+    #expect(runtime.registry.module(named: "add_calendar_event")?.routingMetadata.domain == "calendar")
+    #expect(runtime.registry.module(named: "add_calendar_event")?.routingMetadata.supportsFollowUpReuse == false)
     #expect(runtime.registry.module(named: "get_mac_status")?.routingMetadata.domain == "system")
     #expect(runtime.registry.module(named: "run_safe_command")?.routingMetadata.domain == "terminal")
 }
@@ -618,6 +684,138 @@ func conversationServicePersistsSessionSummaryForLongChats() async throws {
     let summary = try harness.memoryStore.latestSummary(sessionID: session.id)
     #expect(summary?.contains("Earlier context:") == true)
     #expect(summary?.contains("user: Chat turn 1") == true)
+}
+
+@Test
+func conversationServiceTurnsInvalidCalendarCreateTimingIntoClarification() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .toolCall(ToolCall(
+                id: "call_1",
+                name: "add_calendar_event",
+                argumentsJSON: #"{"title":"Weekly Sync Meeting","starts_at":"2026-04-28T14:00:00+02:00"}"#
+            )),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Calendar Clarification Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: "Add my weekly sync meeting for April 28, 2026 at 14:00 to my calendar",
+        autoApproveTools: true
+    )
+
+    #expect(response.toolCall?.name == "add_calendar_event")
+    #expect(response.assistantMessage == "What end time or duration should I use for \"Weekly Sync Meeting\"?")
+}
+
+@Test
+func conversationServiceRepairsInvalidCalendarCreateToolCallBeforeClarifying() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .toolCall(ToolCall(
+                id: "call_1",
+                name: "add_calendar_event",
+                argumentsJSON: #"{"calendar":"Weekly Sync Meetings","starts_at":"2026-04-28T14:00:00+02:00"}"#
+            )),
+            .toolCall(ToolCall(
+                id: "call_2",
+                name: "add_calendar_event",
+                argumentsJSON: #"{"title":"Weekly Sync Meeting","starts_at":"2026-04-28T14:00:00+02:00"}"#
+            )),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Calendar Repair Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: "Add my weekly sync meeting for April 28, 2026 at 14:00 to my calendar",
+        autoApproveTools: true
+    )
+
+    #expect(response.toolCall?.name == "add_calendar_event")
+    #expect(response.assistantMessage == "What end time or duration should I use for \"Weekly Sync Meeting\"?")
+}
+
+@Test
+func conversationServiceUsesToolSpecificClarificationWhenInvalidCalendarCreateRepairFails() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .toolCall(ToolCall(
+                id: "call_1",
+                name: "add_calendar_event",
+                argumentsJSON: #"{"starts_at":"2026-04-27T12:00:00+02:00"}"#
+            )),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Calendar Invalid Args Clarification Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: #"Please add "lunch" to my calendar on April 27, 2026 at 12:00."#,
+        autoApproveTools: true
+    )
+
+    #expect(response.assistantMessage == "What should I title this event?")
+}
+
+@Test
+func conversationServiceRepairsMalformedCalendarToolPayloadIntoClarificationText() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(
+                """
+                ```json
+                {"tool_calls": [oops]}
+                ```
+                """
+            ),
+            .text(#"What end time or duration should I use for "lunch"?"#),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Calendar Malformed Payload Repair Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: #"Please add "lunch" to my calendar on April 27, 2026 at 12:00."#,
+        autoApproveTools: true
+    )
+
+    #expect(response.assistantMessage == #"What end time or duration should I use for "lunch"?"#)
+}
+
+@Test
+func conversationServiceDoesNotSurfaceRawToolCallJSONToUser() async throws {
+    let harness = try ConversationTestHarness(defaults: .default)
+    let conversationService = try harness.makeConversationService(
+        modelClient: SequenceModelClient(events: [
+            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(
+                """
+                ```json
+                {"tool_calls":[{"id":"call_1","type":"function","function":{"name":"add_calendar_event","arguments":{"title":"Weekly Sync Meeting","starts_at":"2026-04-28T14:00:00+02:00"}}}]
+                ```
+                """
+            ),
+        ])
+    )
+    let session = try conversationService.createSession(title: "Calendar Raw JSON Test")
+
+    let response = try await conversationService.sendMessage(
+        sessionID: session.id,
+        userInput: "Add my weekly sync meeting for April 28, 2026 at 14:00 to my calendar",
+        autoApproveTools: true
+    )
+
+    #expect(response.assistantMessage == "I couldn't confirm the tool details reliably. Please try again or rephrase the request.")
 }
 
 private actor StubModelResponses {

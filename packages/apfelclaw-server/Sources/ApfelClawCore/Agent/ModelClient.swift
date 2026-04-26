@@ -155,7 +155,9 @@ public final class ModelClient: ModelCompleting, Sendable {
     }
 
     static func extractToolCall(from content: String) -> ToolCall? {
-        let candidates = [content, stripCodeFence(from: content), extractJSONObject(from: content)].compactMap {
+        let stripped = stripCodeFence(from: content)
+        let strippedObject = stripped.flatMap { extractJSONObject(from: $0) }
+        let candidates = [content, stripped, extractJSONObject(from: content), strippedObject].compactMap {
             $0?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
@@ -165,6 +167,12 @@ public final class ModelClient: ModelCompleting, Sendable {
                let payload = try? decoder.decode(FallbackToolCallPayload.self, from: data),
                let first = payload.toolCalls.first {
                 return normalizeToolCall(first)
+            }
+
+            if let data = candidate.data(using: .utf8),
+               let payload = try? decoder.decode(LooseFallbackToolCallPayload.self, from: data),
+               let first = payload.toolCalls.first {
+                return normalizeLooseToolCall(first)
             }
         }
 
@@ -203,6 +211,28 @@ public final class ModelClient: ModelCompleting, Sendable {
 
     private static func normalizedSafeCommandArguments(command: String) -> String {
         #"{"command":"\#(command)","arguments":[]}"#
+    }
+
+    private static func normalizeLooseToolCall(_ toolCall: LooseChatToolCall) -> ToolCall? {
+        let name = toolCall.function.name
+
+        if SafeCommandRegistry.commands.contains(where: { $0.name == name }) {
+            return ToolCall(
+                id: toolCall.id,
+                name: "run_safe_command",
+                argumentsJSON: normalizedSafeCommandArguments(command: name)
+            )
+        }
+
+        guard let argumentsJSON = toolCall.function.arguments.renderedJSONString else {
+            return nil
+        }
+
+        return ToolCall(
+            id: toolCall.id,
+            name: name,
+            argumentsJSON: argumentsJSON
+        )
     }
 }
 
@@ -267,5 +297,62 @@ private struct FallbackToolCallPayload: Codable {
 
     enum CodingKeys: String, CodingKey {
         case toolCalls = "tool_calls"
+    }
+}
+
+private struct LooseFallbackToolCallPayload: Codable {
+    let toolCalls: [LooseChatToolCall]
+
+    enum CodingKeys: String, CodingKey {
+        case toolCalls = "tool_calls"
+    }
+}
+
+private struct LooseChatToolCall: Codable {
+    struct FunctionCall: Codable {
+        let name: String
+        let arguments: FlexibleToolArguments
+    }
+
+    let id: String
+    let type: String
+    let function: FunctionCall
+}
+
+private enum FlexibleToolArguments: Codable {
+    case string(String)
+    case json(JSONValue)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let string = try? container.decode(String.self) {
+            self = .string(string)
+            return
+        }
+
+        let json = try container.decode(JSONValue.self)
+        self = .json(json)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case let .string(value):
+            try container.encode(value)
+        case let .json(value):
+            try container.encode(value)
+        }
+    }
+
+    var renderedJSONString: String? {
+        switch self {
+        case let .string(value):
+            return value
+        case let .json(value):
+            guard let data = try? JSONEncoder().encode(value) else {
+                return nil
+            }
+            return String(data: data, encoding: .utf8)
+        }
     }
 }

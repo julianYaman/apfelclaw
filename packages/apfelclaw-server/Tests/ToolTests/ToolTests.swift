@@ -69,6 +69,35 @@ func runtimeAcceptsCalendarTimeRangeAlias() async throws {
 }
 
 @Test
+func runtimeAcceptsCalendarEventCreateAliases() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "add_calendar_event"))
+
+    let arguments = try module.validatedArguments(
+        from: #"{"title":"Weekly sync","start_time":"today 14:00","end_time":"15:00"}"#
+    )
+
+    #expect(arguments["starts_at"]?.stringValue == "today 14:00")
+    #expect(arguments["ends_at"]?.stringValue == "15:00")
+    #expect(arguments["start_time"] == nil)
+    #expect(arguments["end_time"] == nil)
+}
+
+@Test
+func runtimeRejectsNonPositiveCalendarEventDuration() throws {
+    let runtime = try ToolRuntime()
+    let module = try #require(runtime.module(named: "add_calendar_event"))
+
+    do {
+        _ = try module.validatedArguments(
+            from: #"{"title":"Weekly sync","starts_at":"today 14:00","duration_minutes":0}"#
+        )
+        Issue.record("Expected non-positive duration to fail.")
+    } catch is AppError {
+    }
+}
+
+@Test
 func macStatusToolRejectsUnsupportedSections() throws {
     let runtime = try ToolRuntime()
     let module = try #require(runtime.module(named: "get_mac_status"))
@@ -137,6 +166,52 @@ func calendarToolsResolveNaturalLanguageTimeframes() throws {
 
     #expect(resolved.label == "April 12, 2026")
     #expect(resolved.start < resolved.end)
+}
+
+@Test
+func calendarToolsRequireExplicitEventEndOrDuration() throws {
+    let tools = CalendarTools()
+    let formatter = ISO8601DateFormatter()
+    let referenceDate = try #require(formatter.date(from: "2026-04-07T11:49:54+02:00"))
+    let timeZone = try #require(TimeZone(secondsFromGMT: 7_200))
+
+    do {
+        _ = try tools.resolveEventTiming(
+            startsAt: "today 14:00",
+            endsAt: nil,
+            durationMinutes: nil,
+            referenceDate: referenceDate,
+            timeZone: timeZone
+        )
+        Issue.record("Expected missing event end timing to fail.")
+    } catch is AppError {
+    }
+}
+
+@Test
+func calendarToolsAnchorTimeOnlyEndToStartDay() throws {
+    let tools = CalendarTools()
+    let formatter = ISO8601DateFormatter()
+    let referenceDate = try #require(formatter.date(from: "2026-04-07T11:49:54+02:00"))
+    let timeZone = try #require(TimeZone(secondsFromGMT: 7_200))
+
+    let resolved = try tools.resolveEventTiming(
+        startsAt: "tomorrow 14:00",
+        endsAt: "15:00",
+        durationMinutes: nil,
+        referenceDate: referenceDate,
+        timeZone: timeZone
+    )
+
+    #expect(resolved.start < resolved.end)
+
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    let startDay = calendar.dateComponents([.year, .month, .day], from: resolved.start)
+    let endDay = calendar.dateComponents([.year, .month, .day], from: resolved.end)
+    #expect(startDay.year == endDay.year)
+    #expect(startDay.month == endDay.month)
+    #expect(startDay.day == endDay.day)
 }
 
 @Test

@@ -59,9 +59,11 @@ public protocol ToolModule: Sendable {
     func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String
     func summarizeResult(_ result: String, context: ToolPresentationContext) -> String?
     func summarizeLastResult(_ result: String, context: ToolPresentationContext) -> ToolResultSnapshot?
+    func summarizeExecutionError(_ error: Error, argumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String?
     func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue]
 }
 
 public extension ToolModule {
     var supportsDeterministicFallbackInvocation: Bool { false }
+    func summarizeExecutionError(_ error: Error, argumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String? { nil }
 }

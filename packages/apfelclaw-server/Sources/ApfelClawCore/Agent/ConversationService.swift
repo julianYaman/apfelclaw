@@ -113,11 +113,66 @@ public final class ConversationService: @unchecked Sendable {
                 sessionSummary: sessionSummary,
                 selectedTool: selectedTool,
                 now: requestTime,
-                timeZone: requestTimeZone
+                timeZone: requestTimeZone,
+                repairInstruction: nil
             )
             let outcome = try await modelClient.complete(messages: toolMessages, tools: [selectedTool], mode: .toolAware)
 
             if let toolCall = validatedToolCall(outcome.toolCall, selectedToolName: toolName) {
+                if let validationError = selectedToolCallValidationError(toolCall, selectedToolName: toolName) {
+                    if let repairedOutcome = try await requestToolCallRepair(
+                        from: recentMessages,
+                        config: config,
+                        sessionSummary: sessionSummary,
+                        selectedTool: selectedTool,
+                        now: requestTime,
+                        timeZone: requestTimeZone,
+                        validationError: validationError
+                    ) {
+                        if let repairedToolCall = validatedToolCall(repairedOutcome.toolCall, selectedToolName: toolName),
+                           selectedToolCallValidationError(repairedToolCall, selectedToolName: toolName) == nil {
+                            return try await executeToolRoundTrip(
+                                sessionID: sessionID,
+                                toolCall: repairedToolCall,
+                                priorMessages: toolMessages,
+                                toolPolicy: toolPolicy,
+                                debugEnabled: config.debug,
+                                userInput: trimmed,
+                                autoApproveTools: autoApproveTools,
+                                memoryEnabled: config.memoryEnabled,
+                                requestTime: requestTime,
+                                requestTimeZone: requestTimeZone
+                            )
+                        }
+
+                        if let text = repairedOutcome.text {
+                            if Self.looksLikeToolCallPayload(text) {
+                                let clarification = "I couldn't confirm the tool details reliably. Please try again or rephrase the request."
+                                try persistAssistantMessage(sessionID: sessionID, content: clarification, memoryEnabled: config.memoryEnabled)
+                                return ConversationTurnResponse(sessionID: sessionID, assistantMessage: clarification, toolCall: nil)
+                            }
+                            try persistAssistantMessage(sessionID: sessionID, content: text, memoryEnabled: config.memoryEnabled)
+                            return ConversationTurnResponse(sessionID: sessionID, assistantMessage: text, toolCall: nil)
+                        }
+                    }
+
+                    if let clarification = toolIssueClarification(
+                        toolName: toolName,
+                        issueMessage: validationError,
+                        argumentsJSON: toolCall.argumentsJSON,
+                        userInput: trimmed,
+                        referenceDate: requestTime,
+                        timeZone: requestTimeZone
+                    ) {
+                        try persistAssistantMessage(sessionID: sessionID, content: clarification, memoryEnabled: config.memoryEnabled)
+                        return ConversationTurnResponse(sessionID: sessionID, assistantMessage: clarification, toolCall: nil)
+                    }
+
+                    let clarification = "I couldn't confirm the tool details reliably. Please try again or rephrase the request."
+                    try persistAssistantMessage(sessionID: sessionID, content: clarification, memoryEnabled: config.memoryEnabled)
+                    return ConversationTurnResponse(sessionID: sessionID, assistantMessage: clarification, toolCall: nil)
+                }
+
                 return try await executeToolRoundTrip(
                     sessionID: sessionID,
                     toolCall: toolCall,
@@ -151,6 +206,42 @@ public final class ConversationService: @unchecked Sendable {
             }
 
             if let text = outcome.text {
+                if Self.looksLikeToolCallPayload(text) {
+                    if let repairedOutcome = try await requestToolCallRepair(
+                        from: recentMessages,
+                        config: config,
+                        sessionSummary: sessionSummary,
+                        selectedTool: selectedTool,
+                        now: requestTime,
+                        timeZone: requestTimeZone,
+                        validationError: "Previous tool-call attempt was malformed or could not be parsed."
+                    ) {
+                        if let repairedToolCall = validatedToolCall(repairedOutcome.toolCall, selectedToolName: toolName),
+                           selectedToolCallValidationError(repairedToolCall, selectedToolName: toolName) == nil {
+                            return try await executeToolRoundTrip(
+                                sessionID: sessionID,
+                                toolCall: repairedToolCall,
+                                priorMessages: toolMessages,
+                                toolPolicy: toolPolicy,
+                                debugEnabled: config.debug,
+                                userInput: trimmed,
+                                autoApproveTools: autoApproveTools,
+                                memoryEnabled: config.memoryEnabled,
+                                requestTime: requestTime,
+                                requestTimeZone: requestTimeZone
+                            )
+                        }
+
+                        if let repairedText = repairedOutcome.text, Self.looksLikeToolCallPayload(repairedText) == false {
+                            try persistAssistantMessage(sessionID: sessionID, content: repairedText, memoryEnabled: config.memoryEnabled)
+                            return ConversationTurnResponse(sessionID: sessionID, assistantMessage: repairedText, toolCall: nil)
+                        }
+                    }
+
+                    let clarification = "I couldn't confirm the tool details reliably. Please try again or rephrase the request."
+                    try persistAssistantMessage(sessionID: sessionID, content: clarification, memoryEnabled: config.memoryEnabled)
+                    return ConversationTurnResponse(sessionID: sessionID, assistantMessage: clarification, toolCall: nil)
+                }
                 try persistAssistantMessage(sessionID: sessionID, content: text, memoryEnabled: config.memoryEnabled)
                 return ConversationTurnResponse(sessionID: sessionID, assistantMessage: text, toolCall: nil)
             }
@@ -230,8 +321,20 @@ public final class ConversationService: @unchecked Sendable {
                 context: ToolExecutionContext(referenceDate: requestTime, timeZone: requestTimeZone)
             )
         } catch {
-            let toolLabel = selectedTool?.summary ?? toolCall.name
-            let assistantMessage = "I tried to use \(toolLabel), but it failed: \(error.localizedDescription). Please try again or rephrase the request."
+            let context = ToolExecutionContext(referenceDate: requestTime, timeZone: requestTimeZone)
+            let assistantMessage: String
+            if let module = selectedTool.flatMap({ toolRuntime.module(named: $0.name) }),
+               let summarized = module.summarizeExecutionError(
+                   error,
+                   argumentsJSON: toolCall.argumentsJSON,
+                   userInput: userInput,
+                   context: context
+               ) {
+                assistantMessage = summarized
+            } else {
+                let toolLabel = selectedTool?.summary ?? toolCall.name
+                assistantMessage = "I tried to use \(toolLabel), but it failed: \(error.localizedDescription). Please try again or rephrase the request."
+            }
             try persistAssistantMessage(sessionID: sessionID, content: assistantMessage, memoryEnabled: memoryEnabled)
             return ConversationTurnResponse(sessionID: sessionID, assistantMessage: assistantMessage, toolCall: summary)
         }
@@ -321,14 +424,16 @@ public final class ConversationService: @unchecked Sendable {
         sessionSummary: String?,
         selectedTool: ToolDefinition,
         now: Date,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        repairInstruction: String?
     ) -> [ChatMessage] {
         let systemPrompt = Self.toolCallSystemPrompt(
             assistantName: config.assistantName,
             userName: config.userName,
             selectedTool: selectedTool,
             now: now,
-            timeZone: timeZone
+            timeZone: timeZone,
+            repairInstruction: repairInstruction
         )
 
         var promptMessages: [ChatMessage] = [ChatMessage(role: "system", content: systemPrompt)]
@@ -370,7 +475,8 @@ public final class ConversationService: @unchecked Sendable {
         userName: String,
         selectedTool: ToolDefinition,
         now: Date,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        repairInstruction: String? = nil
     ) -> String {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.timeZone = timeZone
@@ -381,6 +487,17 @@ public final class ConversationService: @unchecked Sendable {
         humanFormatter.dateFormat = "EEEE, MMMM d, yyyy 'at' HH:mm:ss zzz"
 
         let allowedKeys = selectedTool.parameters.objectValue?["properties"]?.objectValue?.keys.sorted().joined(separator: ", ") ?? "(none)"
+        let writeSafetyRule = selectedTool.readonly
+            ? ""
+            : "This tool changes user data. Never guess missing action details. If timing, target, or other action-critical details are missing or ambiguous, ask one short clarification question instead of assuming defaults.\n"
+        let selectedToolRule: String
+        switch selectedTool.name {
+        case "add_calendar_event":
+            selectedToolRule = "For add_calendar_event: use the default calendar for new events. Never invent an end time or duration. Never set 'ends_at' equal to 'starts_at' unless the user explicitly asked for a zero-length event. If the user only gave a start time, ask for an end time or duration instead of guessing. When the user answers a clarification question, carry forward the event details already established in the recent conversation, such as the title and start time, and only fill in the missing fields from the latest reply.\n"
+        default:
+            selectedToolRule = ""
+        }
+        let repairRule = repairInstruction.map { "Previous tool-call attempt was invalid: \($0) Retry with corrected arguments using the recent conversation context, or ask one short clarification question if required details are still missing.\n" } ?? ""
 
         return """
         You are \(assistantName), a local macOS assistant running inside apfelclaw.
@@ -389,7 +506,7 @@ public final class ConversationService: @unchecked Sendable {
         Your job is to call exactly that tool using only its documented argument keys.
         Allowed argument keys for this tool: \(allowedKeys).
         If required information is missing, ask one short clarification question instead of inventing arguments.
-        Never choose a different tool name.
+        \(writeSafetyRule)\(selectedToolRule)\(repairRule)Never choose a different tool name.
         Never answer from memory when the selected tool should be used.
         Never write JSON, code fences, or pseudo-tool-call payloads to represent tool use.
         If you call a tool, call exactly one tool.
@@ -405,6 +522,61 @@ public final class ConversationService: @unchecked Sendable {
             return nil
         }
         return toolCall
+    }
+
+    private func selectedToolCallValidationError(_ toolCall: ToolCall, selectedToolName: String) -> String? {
+        guard let module = toolRuntime.module(named: selectedToolName) else {
+            return nil
+        }
+
+        do {
+            _ = try module.validatedArguments(from: toolCall.argumentsJSON)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func requestToolCallRepair(
+        from messages: [(role: String, content: String)],
+        config: AppConfig,
+        sessionSummary: String?,
+        selectedTool: ToolDefinition,
+        now: Date,
+        timeZone: TimeZone,
+        validationError: String
+    ) async throws -> CompletionOutcome? {
+        let repairMessages = buildToolCallPrompt(
+            from: messages,
+            config: config,
+            sessionSummary: sessionSummary,
+            selectedTool: selectedTool,
+            now: now,
+            timeZone: timeZone,
+            repairInstruction: validationError
+        )
+
+        return try await modelClient.complete(messages: repairMessages, tools: [selectedTool], mode: .toolAware)
+    }
+
+    private func toolIssueClarification(
+        toolName: String,
+        issueMessage: String,
+        argumentsJSON: String,
+        userInput: String,
+        referenceDate: Date,
+        timeZone: TimeZone
+    ) -> String? {
+        guard let module = toolRuntime.module(named: toolName) else {
+            return nil
+        }
+
+        return module.summarizeExecutionError(
+            AppError.message(issueMessage),
+            argumentsJSON: argumentsJSON,
+            userInput: userInput,
+            context: ToolExecutionContext(referenceDate: referenceDate, timeZone: timeZone)
+        )
     }
 
     private func persistAssistantMessage(sessionID: Int64, content: String, memoryEnabled: Bool) throws {
@@ -470,6 +642,11 @@ public final class ConversationService: @unchecked Sendable {
 
     private static func clarificationMessage() -> String {
         "I need a bit more detail to answer that reliably. If you want live data from this Mac, tell me what to check, such as your calendar, recent mail, files, or Mac status."
+    }
+
+    private static func looksLikeToolCallPayload(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.contains("\"tool_calls\"") || trimmed.hasPrefix("```json")
     }
 
     private func escapeForJSON(_ value: String) -> String {

@@ -93,6 +93,8 @@ public final class ToolRegistry: @unchecked Sendable {
             return MacStatusToolModule(definition: definition)
         case "list_calendar_events":
             return CalendarEventsToolModule(definition: definition)
+        case "add_calendar_event":
+            return AddCalendarEventToolModule(definition: definition)
         case "run_safe_command":
             return SafeCommandToolModule(definition: definition)
         case "list_recent_mail":
@@ -725,6 +727,152 @@ private struct CalendarEventsToolModule: ToolModule {
         output.dateStyle = .medium
         output.timeStyle = .short
         return output.string(from: date)
+    }
+}
+
+private struct AddCalendarEventToolModule: ToolModule {
+    let definition: ToolDefinition
+    let routingMetadata = ToolRoutingMetadata(domain: "calendar", supportsFollowUpReuse: false, followUpSummaryStyle: .generic)
+    private let calendarTools = CalendarTools()
+
+    func execute(arguments: [String: JSONValue], userInput: String, context: ToolExecutionContext) async throws -> String {
+        let title = try ToolModuleSupport.requireString(arguments["title"], key: "title")
+        let startsAt = try ToolModuleSupport.requireString(arguments["starts_at"], key: "starts_at")
+        let endsAt = arguments["ends_at"]?.stringValue
+        let durationMinutes = try ToolModuleSupport.optionalInt(arguments["duration_minutes"], key: "duration_minutes")
+        let location = arguments["location"]?.stringValue
+        let notes = arguments["notes"]?.stringValue
+
+        return try await calendarTools.createEvent(
+            title: title,
+            startsAt: startsAt,
+            endsAt: endsAt,
+            durationMinutes: durationMinutes,
+            location: location,
+            notes: notes,
+            referenceDate: context.referenceDate,
+            timeZone: context.timeZone
+        )
+    }
+
+    func summarizeResult(_ result: String, context: ToolPresentationContext) -> String? {
+        guard let object = ToolModuleSupport.decodeObject(result) else {
+            return nil
+        }
+
+        let title = object["title"]?.stringValue ?? "Untitled event"
+        let calendar = object["calendar"]?.stringValue ?? "Calendar"
+        let start = object["start"]?.stringValue
+        let end = object["end"]?.stringValue
+
+        var parts = ["Created \"\(title)\" in \(calendar)"]
+        if let start, let end {
+            let renderedStart = CalendarEventsToolModule.humanDate(start) ?? start
+            let renderedEnd = CalendarEventsToolModule.humanDate(end) ?? end
+            parts.append("from \(renderedStart) to \(renderedEnd)")
+        }
+        var sentence = parts.joined(separator: " ") + "."
+        if let location = object["location"]?.stringValue {
+            sentence += " Location: \(location)."
+        }
+        return sentence
+    }
+
+    func summarizeLastResult(_ result: String, context: ToolPresentationContext) -> ToolResultSnapshot? {
+        guard let object = ToolModuleSupport.decodeObject(result) else {
+            return nil
+        }
+
+        let title = object["title"]?.stringValue ?? "created event"
+        let calendar = object["calendar"]?.stringValue ?? "Calendar"
+        var scope: [String: JSONValue] = [
+            "title": .string(title),
+            "calendar": .string(calendar),
+        ]
+        if let eventIdentifier = object["event_identifier"]?.stringValue {
+            scope["event_identifier"] = .string(eventIdentifier)
+        }
+        if let start = object["start"]?.stringValue {
+            scope["start"] = .string(start)
+        }
+        if let end = object["end"]?.stringValue {
+            scope["end"] = .string(end)
+        }
+
+        let summary: String
+        if let start = object["start"]?.stringValue,
+           let end = object["end"]?.stringValue {
+            summary = "Previous calendar creation added \"\(title)\" in \(calendar) from \(start) to \(end)."
+        } else {
+            summary = "Previous calendar creation added \"\(title)\" in \(calendar)."
+        }
+
+        return ToolResultSnapshot(
+            toolName: definition.name,
+            domain: routingMetadata.domain,
+            scopeSummary: summary,
+            machineReadableScope: .object(scope)
+        )
+    }
+
+    func summarizeExecutionError(_ error: Error, argumentsJSON: String, userInput: String, context: ToolExecutionContext) -> String? {
+        let message = error.localizedDescription
+        let title = (try? validatedArguments(from: argumentsJSON)["title"]?.stringValue) ?? "that event"
+
+        if message.contains("'title' is required") {
+            return "What should I title this event?"
+        }
+
+        if message.contains("must include either 'ends_at' or 'duration_minutes'") ||
+            message.contains("end time must be later than the start time") ||
+            message.contains("do not agree on the event end time") {
+            return "What end time or duration should I use for \"\(title)\"?"
+        }
+
+        if message.contains("'starts_at' is required") {
+            return "What date and start time should I use for \"\(title)\"?"
+        }
+
+        if message.contains("'starts_at' must include a specific time") {
+            return "What start time should I use for \"\(title)\"?"
+        }
+
+        if message.contains("'ends_at' must include a specific time") {
+            return "What end time should I use for \"\(title)\"?"
+        }
+
+        if message.contains("Calendar access was denied") {
+            return "Calendar access is not available right now. Please allow calendar access for apfelclaw and try again."
+        }
+
+        if message.contains("No writable calendar is available") {
+            return "I couldn't find a writable calendar to add the event to. Please check your Calendar setup and try again."
+        }
+
+        return nil
+    }
+
+    func validatedArguments(from rawArgumentsJSON: String) throws -> [String: JSONValue] {
+        let arguments = try ToolModuleSupport.validatedArguments(
+            from: rawArgumentsJSON,
+            allowed: ["title", "starts_at", "ends_at", "duration_minutes", "location", "notes"],
+            toolName: definition.name,
+            aliases: [
+                "start_time": "starts_at",
+                "end_time": "ends_at",
+            ],
+            aliasHints: [
+                "start_time": "starts_at",
+                "end_time": "ends_at",
+            ]
+        )
+
+        if let durationMinutes = try ToolModuleSupport.optionalInt(arguments["duration_minutes"], key: "duration_minutes"),
+           durationMinutes <= 0 {
+            throw AppError.message("Tool argument 'duration_minutes' must be a positive integer.")
+        }
+
+        return arguments
     }
 }
 

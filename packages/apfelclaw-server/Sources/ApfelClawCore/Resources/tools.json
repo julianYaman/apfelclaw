@@ -88,6 +88,54 @@
       }
     },
     {
+      "name": "add_calendar_event",
+      "description": "Create one calendar event in the user's calendars. If the user did not specify an end time or duration, ask one short clarification question instead of guessing. Use the default calendar for new events.",
+      "use_when": "The user asks to add, create, or schedule a calendar event, meeting, or appointment.",
+      "avoid_when": "The user asks to list events, edit or delete an existing event, or create a recurring event.",
+      "examples": [
+        "Add my weekly sync meeting for today at 14:00 to my calendar",
+        "Create a dentist appointment tomorrow at 9am",
+        "Schedule lunch with Sam on Friday from 12:00 to 13:00"
+      ],
+      "returns": "The created calendar event with title, calendar, start time, end time, and event identifier.",
+      "readonly": false,
+      "requires_confirmation": true,
+      "result_format": "calendar_event_create",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The event title. Keep it short and specific."
+          },
+          "starts_at": {
+            "type": "string",
+            "description": "The event start time as natural language or ISO 8601, using the user's current timezone. It must include a specific time."
+          },
+          "ends_at": {
+            "type": "string",
+            "description": "Optional explicit end time as natural language or ISO 8601. Prefer including the date when it differs from the start day."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "description": "Optional event duration in minutes when no explicit end time is provided. Use a positive integer."
+          },
+          "location": {
+            "type": "string",
+            "description": "Optional event location."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional event notes."
+          }
+        },
+        "required": [
+          "title",
+          "starts_at"
+        ]
+      }
+    },
+    {
       "name": "get_mac_status",
       "description": "Read current status information from this Mac, such as battery, power source, thermal state, memory, storage, and uptime.",
       "use_when": "The user asks about this Mac's current health, battery, power, memory, disk space, temperature state, or uptime.",

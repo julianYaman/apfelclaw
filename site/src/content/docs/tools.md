@@ -1,12 +1,12 @@
 ---
 title: Tools
-description: Tool catalog — file search, file info, calendar events, Mac status, safe commands, and recent mail.
+description: Tool catalog — file search, file info, calendar reads and writes, Mac status, safe commands, and recent mail.
 order: 3
 ---
 
 apfelclaw loads its runtime tool catalog from a JSON manifest (`tools.json`). The model does not read this file directly — the app converts it into an OpenAI-compatible `tools` payload, sends that to `apfel`, and maps approved tool calls back to local Swift executors.
 
-All current tools are **read-only**. Whether the user is prompted before execution depends on the configured [approval mode](/docs/api#approval-modes) and each tool's confirmation policy.
+Most tools are **read-only**. `add_calendar_event` writes to the user's calendar and always requires confirmation before execution. Whether the user is prompted before execution depends on the configured [approval mode](/docs/api#approval-modes) and each tool's confirmation policy.
 
 ## find_files
 
@@ -82,7 +82,7 @@ Read upcoming events from the user's calendars via EventKit.
 
 **Use when:** The user asks about meetings or schedule items for a specific time range.
 
-**Avoid when:** The user wants to create or edit events.
+**Avoid when:** The user wants to create, edit, or delete events.
 
 **Examples:**
 - "What meetings do I have today?"
@@ -90,6 +90,44 @@ Read upcoming events from the user's calendars via EventKit.
 - "Any events this week?"
 
 > This tool supports **follow-up reuse**: if the user asks about "today" and then follows up with "what about tomorrow?", the Intent Router can reuse this tool without re-classifying from scratch.
+
+---
+
+## add_calendar_event
+
+Create one calendar event in the user's calendars via EventKit.
+
+| Property | Value |
+|---|---|
+| Domain | `calendar` |
+| Read-only | No |
+| Follow-up reuse | No |
+| Confirmation | Always |
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | Yes | Event title |
+| `starts_at` | string | Yes | Event start time as natural language or ISO 8601. It must include a specific time |
+| `ends_at` | string | No | Explicit end time as natural language or ISO 8601 |
+| `duration_minutes` | integer | No | Event duration in minutes when no explicit end time is provided |
+| `location` | string | No | Event location |
+| `notes` | string | No | Event notes |
+
+**Use when:** The user asks to add, create, or schedule a calendar event, meeting, or appointment.
+
+**Avoid when:** The user wants to list events, edit or delete an existing event, or create a recurring event.
+
+**Notes:**
+- This tool creates **single events only** in v1.
+- If the user did not clearly specify an end time or duration, the assistant should ask one short clarification question instead of guessing.
+- apfelclaw uses the system default calendar for new events.
+
+**Examples:**
+- "Add my weekly sync meeting for today at 14:00 to my calendar"
+- "Create a dentist appointment tomorrow at 9am"
+- "Schedule lunch with Sam on Friday from 12:00 to 13:00"
 
 ---
 
