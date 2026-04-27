@@ -82,6 +82,15 @@ public final class ApfelManager: @unchecked Sendable {
             return path
         }
 
+        let fallbackCandidates = [
+            "/opt/homebrew/bin/apfel",
+            "/usr/local/bin/apfel",
+        ]
+
+        for candidate in fallbackCandidates where FileManager.default.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+
         throw AppError.message("`apfel` was not found in PATH. Install it before starting apfelclaw.")
     }
 
