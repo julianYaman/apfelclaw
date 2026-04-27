@@ -77,7 +77,32 @@ const configExample = JSON.stringify(
         >.
       </p>
       <div class="hero-install">
-        <pre><code>{brewInstall}</code></pre>
+        <button
+          type="button"
+          class="copy-brew"
+          data-copy-brew
+          aria-label="Copy brew install commands"
+          title="Copy brew install commands"
+        >
+          <span class="copy-brew-tooltip copy-brew-tooltip-copy">Copy</span>
+          <span class="copy-brew-tooltip copy-brew-tooltip-copied">Copied</span>
+          <span class="copy-brew-icon" aria-hidden="true">
+            <svg class="copy-brew-icon-default" viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+              </g>
+            </svg>
+            <svg class="copy-brew-icon-success" viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 15 2 2 4-4" />
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+              </g>
+            </svg>
+          </span>
+        </button>
+        <pre><code id="hero-brew-command">{brewInstall}</code></pre>
       </div>
       <div class="hero-actions">
         <a href={`https://github.com/${repo}`} class="btn btn-primary">
@@ -495,9 +520,129 @@ const configExample = JSON.stringify(
   }
 
   .hero-install {
+    position: relative;
     max-width: 440px;
     margin: 0 auto 1.5rem;
     text-align: left;
+  }
+
+  .hero-install pre {
+    margin: 0;
+    padding-right: 3rem;
+  }
+
+  .copy-brew {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+
+  .copy-brew::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: -0.45rem;
+    width: 0;
+    height: 0;
+    border-left: 0.35rem solid transparent;
+    border-right: 0.35rem solid transparent;
+    border-top: 0.35rem solid rgba(16, 24, 16, 0.98);
+    opacity: 0;
+    transform: translate(-50%, 0.15rem);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+
+  .copy-brew-tooltip {
+    position: absolute;
+    left: 50%;
+    top: -0.45rem;
+    padding: 0.28rem 0.5rem;
+    border-radius: 0.45rem;
+    background: rgba(16, 24, 16, 0.98);
+    color: #fff;
+    font-size: 0.68rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 4px));
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+
+  .copy-brew-tooltip-copied {
+    display: none;
+  }
+
+  .copy-brew:hover {
+    transform: translateY(-1px);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  .copy-brew:hover .copy-brew-tooltip-copy,
+  .copy-brew:focus-visible .copy-brew-tooltip-copy {
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 4px));
+  }
+
+  .copy-brew:focus-visible {
+    outline: 2px solid var(--fresh-lime);
+    outline-offset: 2px;
+  }
+
+  .copy-brew.is-copied {
+    color: var(--leaf-green);
+    background: rgba(167, 225, 99, 0.12);
+    border-color: rgba(167, 225, 99, 0.24);
+  }
+
+  .copy-brew.is-copied .copy-brew-icon-default {
+    display: none;
+  }
+
+  .copy-brew.is-copied .copy-brew-icon-success {
+    display: block;
+  }
+
+  .copy-brew.is-copied .copy-brew-tooltip-copy {
+    display: none;
+  }
+
+  .copy-brew.is-copied .copy-brew-tooltip-copied {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 4px));
+  }
+
+  .copy-brew-icon {
+    width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .copy-brew-icon svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .copy-brew-icon-success {
+    display: none;
   }
 
   .hero-actions {
@@ -841,3 +986,35 @@ const configExample = JSON.stringify(
     }
   }
 </style>
+
+<script>
+  const button = document.querySelector('[data-copy-brew]');
+  const command = document.querySelector('#hero-brew-command');
+  let resetTimer = null;
+
+  if (button && command) {
+    button.addEventListener('click', async () => {
+      const text = command.textContent ?? '';
+
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+      }
+
+      button.classList.add('is-copied');
+      if (resetTimer) {
+        window.clearTimeout(resetTimer);
+      }
+      resetTimer = window.setTimeout(() => button.classList.remove('is-copied'), 1200);
+    });
+  }
+</script>
