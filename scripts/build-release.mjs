@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,6 +14,8 @@ const VERSION = readVersion()
 const CLI_BUNDLE_PATH = join(DIST_ROOT, 'apfelclaw.js')
 const PLATFORM = 'darwin-arm64'
 const CHAT_BINARY_PATH = join(DIST_ROOT, `apfelclaw-chat-${PLATFORM}`)
+const BACKEND_BUILD_DIR = join(REPO_ROOT, 'packages/apfelclaw-server/.build/arm64-apple-macosx/release')
+const BACKEND_RESOURCE_BUNDLES = ['apfelclaw-server_ApfelClawCore.bundle']
 
 await rm(DIST_ROOT, { recursive: true, force: true })
 mkdirSync(DIST_ROOT, { recursive: true })
@@ -22,7 +24,7 @@ run('bun', ['build', 'apps/cli/src/index.mjs', '--target=node', '--outfile', CLI
 run('bun', ['build', 'apps/tui/src/index.tsx', '--compile', '--target=bun-darwin-arm64', '--outfile', CHAT_BINARY_PATH], 'Build arm64 chat binary')
 run('swift', ['build', '--package-path', 'packages/apfelclaw-server', '-c', 'release', '--product', 'apfelclaw-backend'], 'Build arm64 backend')
 
-const backendPath = join(REPO_ROOT, 'packages/apfelclaw-server/.build/arm64-apple-macosx/release/apfelclaw-backend')
+const backendPath = join(BACKEND_BUILD_DIR, 'apfelclaw-backend')
 if (!existsSync(backendPath)) {
   throw new Error(`Missing backend binary: ${backendPath}`)
 }
@@ -54,6 +56,15 @@ chmodSync(join(binDir, 'apfelclaw-chat'), 0o755)
 
 copyFileSync(backendPath, join(libexecBinDir, 'apfelclaw-backend'))
 chmodSync(join(libexecBinDir, 'apfelclaw-backend'), 0o755)
+
+for (const bundleName of BACKEND_RESOURCE_BUNDLES) {
+  const sourcePath = join(BACKEND_BUILD_DIR, bundleName)
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Missing backend resource bundle: ${sourcePath}`)
+  }
+
+  cpSync(sourcePath, join(libexecBinDir, bundleName), { recursive: true })
+}
 
 copyFileSync(CLI_BUNDLE_PATH, join(libexecCliDir, 'apfelclaw.js'))
 writeFileSync(join(libexecCliDir, 'package.json'), `${JSON.stringify({ type: 'module' }, null, 2)}\n`, 'utf8')
