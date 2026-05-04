@@ -11,7 +11,7 @@ import ora from 'ora'
 
 import { runInteractiveOnboarding } from './onboarding.mjs'
 
-const APP_VERSION = '0.2.1'
+const APP_VERSION = '0.2.2'
 const API_BASE = process.env.APFELCLAW_API_BASE ?? 'http://127.0.0.1:4242'
 const CLI_SOURCE_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(CLI_SOURCE_DIR, '../../..')
