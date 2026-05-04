@@ -118,7 +118,7 @@ API endpoints:
 
 HTTP response headers:
 
-- `Server: apfelclaw/0.2.0`
+- `Server: apfelclaw/0.2.1`
 
 Config API:
 
