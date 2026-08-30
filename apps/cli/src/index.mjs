@@ -214,10 +214,13 @@ async function printStatus() {
     ['statePath', STATE_PATH],
     ['pidPath', PID_PATH],
     ['logPath', LOG_PATH],
+    ['brewServiceLogPath', brewServiceLogPaths().join(' or ')],
     ['assistantName', config.assistantName],
     ['userName', config.userName],
     ['approvalMode', formatApprovalMode(config.approvalMode)],
     ['apfelAutostartEnabled', String(config.apfelAutostartEnabled)],
+    ['apfelHost', config.apfelHost ?? '127.0.0.1'],
+    ['apfelPort', String(config.apfelPort ?? 11434)],
   ]
 
   if (liveStatus) {
@@ -239,6 +242,10 @@ async function printStatus() {
       ['apfelRecommendedMinimum', liveStatus.apfel?.recommendedMinimumVersion ?? '1.8.4'],
       ['apfelMeetsRecommendedMinimum', liveStatus.apfel?.meetsRecommendedMinimum == null ? 'unknown' : String(liveStatus.apfel.meetsRecommendedMinimum)],
       ['apfelReachable', liveStatus.apfel?.runtime?.reachable == null ? 'unknown' : String(liveStatus.apfel.runtime.reachable)],
+      ['apfelIsApfel', liveStatus.apfel?.runtime?.isApfel == null ? 'unknown' : String(liveStatus.apfel.runtime.isApfel)],
+      ['apfelEndpoint', liveStatus.apfel?.runtime?.host && liveStatus.apfel?.runtime?.port != null
+        ? `${liveStatus.apfel.runtime.host}:${liveStatus.apfel.runtime.port}`
+        : 'unknown'],
       ['apfelPrewarmed', liveStatus.apfel?.runtime?.prewarmed == null ? 'unknown' : String(liveStatus.apfel.runtime.prewarmed)],
       ['apfelContextWindow', liveStatus.apfel?.runtime?.contextWindow == null ? 'unknown' : String(liveStatus.apfel.runtime.contextWindow)],
       ['apfelModelAvailable', liveStatus.apfel?.runtime?.modelAvailable == null ? 'unknown' : String(liveStatus.apfel.runtime.modelAvailable)],
@@ -263,6 +270,8 @@ async function printStatus() {
       ['apfelRecommendedMinimum', 'unavailable while backend is down'],
       ['apfelMeetsRecommendedMinimum', 'unavailable while backend is down'],
       ['apfelReachable', 'unavailable while backend is down'],
+      ['apfelIsApfel', 'unavailable while backend is down'],
+      ['apfelEndpoint', 'unavailable while backend is down'],
       ['apfelPrewarmed', 'unavailable while backend is down'],
       ['apfelContextWindow', 'unavailable while backend is down'],
       ['apfelModelAvailable', 'unavailable while backend is down'],
@@ -371,7 +380,46 @@ async function waitForHealth() {
     await sleep(500)
   }
 
-  throw new Error('apfelclaw backend did not become healthy after startup.')
+  const logDetails = formatBackendLogTails()
+  throw new Error(
+    `apfelclaw backend did not become healthy after startup.${logDetails ? `\n${logDetails}` : ''}`,
+  )
+}
+
+function brewServiceLogPaths() {
+  return [
+    '/opt/homebrew/var/log/apfelclaw.log',
+    '/usr/local/var/log/apfelclaw.log',
+  ]
+}
+
+function backendLogPaths() {
+  return [LOG_PATH, ...brewServiceLogPaths()]
+}
+
+function formatBackendLogTails(maxLines = 8) {
+  const sections = []
+  for (const path of backendLogPaths()) {
+    if (!existsSync(path)) {
+      continue
+    }
+    try {
+      const text = readFileSync(path, 'utf8').trim()
+      if (!text) {
+        sections.push(`${path}: (empty)`)
+        continue
+      }
+      const lines = text.split(/\r?\n/).slice(-maxLines)
+      sections.push(`${path}:\n${lines.join('\n')}`)
+    } catch {
+      // Ignore unreadable log files.
+    }
+  }
+
+  if (sections.length === 0) {
+    return `No backend log found. Checked: ${backendLogPaths().join(', ')}`
+  }
+  return `Last log output:\n${sections.join('\n\n')}`
 }
 
 async function isBackendHealthy() {

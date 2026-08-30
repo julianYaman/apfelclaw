@@ -9,36 +9,71 @@ public struct ApfelStatus: Sendable {
 public final class ApfelManager: @unchecked Sendable {
     private let config: AppConfig
     private var process: Process?
-    private let baseURL = URL(string: "http://127.0.0.1:11434")!
     private let lock = NSLock()
     private let startupTimeout: TimeInterval = 45
+    private var lastConnectError: String?
 
-    public init(config: AppConfig) {
+    public let endpoint: ApfelEndpoint
+
+    public init(config: AppConfig, environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.config = config
+        self.endpoint = ApfelEndpoint.resolve(config: config, environment: environment)
     }
 
     public func ensureServerRunning() async throws -> ApfelStatus {
         let executable = try resolveApfelPath()
 
-        if await isHealthy() {
+        switch await probe() {
+        case .apfel:
+            setLastConnectError(nil)
             return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: false)
+        case .occupied:
+            let message = ApfelEndpoint.occupiedPortMessage(endpoint: endpoint)
+            setLastConnectError(message)
+            throw AppError.message(message)
+        case .empty:
+            break
         }
 
         guard config.apfelAutostartEnabled else {
-            throw AppError.message("apfel is installed but not running, and autostart is disabled.")
+            let message = "apfel is not reachable at \(endpoint.displayName), and autostart is disabled."
+            setLastConnectError(message)
+            throw AppError.message(message)
         }
 
         try startServer(executablePath: executable)
 
-                let deadline = Date().addingTimeInterval(startupTimeout)
+        if let earlyFailure = processFailureMessage() {
+            setLastConnectError(earlyFailure)
+            throw AppError.message(earlyFailure)
+        }
+
+        let deadline = Date().addingTimeInterval(startupTimeout)
         while Date() < deadline {
+            if let earlyFailure = processFailureMessage() {
+                setLastConnectError(earlyFailure)
+                throw AppError.message(earlyFailure)
+            }
             if await isHealthy() {
+                setLastConnectError(nil)
                 return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: true)
             }
             try await Task.sleep(for: .milliseconds(300))
         }
 
-        throw AppError.message("apfel did not become healthy after startup.")
+        let message = ApfelEndpoint.missingServerMessage(endpoint: endpoint, logPath: apfelLogURL.path)
+        setLastConnectError(message)
+        throw AppError.message(message)
+    }
+
+    public func ensureReadyForRequests() async throws {
+        if await isHealthy() {
+            return
+        }
+        if let lastConnectError = connectError() {
+            throw AppError.message(lastConnectError)
+        }
+        _ = try await ensureServerRunning()
     }
 
     public func shutdownIfOwned() {
@@ -64,22 +99,23 @@ public final class ApfelManager: @unchecked Sendable {
     }
 
     public func isHealthy() async -> Bool {
-        await runtimeHealth().reachable
+        await runtimeHealth().isApfel
     }
 
     public func runtimeHealth() async -> ApfelRuntimeHealth {
-        var request = URLRequest(url: baseURL.appendingPathComponent("health"))
-        request.timeoutInterval = 3.0
+        await probeHealth()
+    }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                return .unreachable
-            }
-            return ApfelRuntimeHealth.parse(data: data, httpStatusCode: http.statusCode)
-        } catch {
-            return .unreachable
-        }
+    public func connectError() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastConnectError
+    }
+
+    private func setLastConnectError(_ message: String?) {
+        lock.lock()
+        lastConnectError = message
+        lock.unlock()
     }
 
     public func resolveApfelPath() throws -> String {
@@ -123,26 +159,71 @@ public final class ApfelManager: @unchecked Sendable {
         shutdownIfOwned()
         try startServer(executablePath: executable)
 
-                let deadline = Date().addingTimeInterval(startupTimeout)
+        let deadline = Date().addingTimeInterval(startupTimeout)
         while Date() < deadline {
+            if let earlyFailure = processFailureMessage() {
+                setLastConnectError(earlyFailure)
+                throw AppError.message(earlyFailure)
+            }
             if await isHealthy() {
+                setLastConnectError(nil)
                 return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: true)
             }
             try await Task.sleep(for: .milliseconds(300))
         }
 
-        throw AppError.message("apfel did not become healthy after restart.")
+        let message = ApfelEndpoint.missingServerMessage(endpoint: endpoint, logPath: apfelLogURL.path)
+        setLastConnectError(message)
+        throw AppError.message(message)
+    }
+
+    enum PortProbe: Sendable {
+        case empty
+        case apfel
+        case occupied
+    }
+
+    func probe() async -> PortProbe {
+        let health = await probeHealth()
+        if health.isApfel {
+            return .apfel
+        }
+        if health.httpStatusCode != nil {
+            return .occupied
+        }
+        return .empty
+    }
+
+    private func probeHealth() async -> ApfelRuntimeHealth {
+        var request = URLRequest(url: endpoint.healthURL)
+        request.timeoutInterval = 3.0
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return ApfelRuntimeHealth(reachable: false, host: endpoint.host, port: endpoint.port)
+            }
+            return ApfelRuntimeHealth.parse(data: data, httpStatusCode: http.statusCode, endpoint: endpoint)
+        } catch {
+            return ApfelRuntimeHealth(reachable: false, host: endpoint.host, port: endpoint.port)
+        }
     }
 
     private func startServer(executablePath: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = ["--permissive", "--serve", "--host", "127.0.0.1", "--port", "11434"]
+        process.arguments = [
+            "--permissive",
+            "--serve",
+            "--host",
+            endpoint.host,
+            "--port",
+            String(endpoint.port),
+        ]
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("apfelclaw-apfel.log")
-        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: outputURL)
+        FileManager.default.createFile(atPath: apfelLogURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: apfelLogURL)
+        try handle.seekToEnd()
         process.standardOutput = handle
         process.standardError = handle
 
@@ -150,6 +231,33 @@ public final class ApfelManager: @unchecked Sendable {
         lock.lock()
         self.process = process
         lock.unlock()
+
+        Thread.sleep(forTimeInterval: 0.2)
+    }
+
+    private var apfelLogURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("apfelclaw-apfel.log")
+    }
+
+    private func processFailureMessage() -> String? {
+        lock.lock()
+        let process = self.process
+        lock.unlock()
+
+        guard let process, process.isRunning == false else {
+            return nil
+        }
+
+        let logTail = (try? String(contentsOf: apfelLogURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let logTail, logTail.localizedCaseInsensitiveContains("already in use") {
+            return ApfelEndpoint.occupiedPortMessage(endpoint: endpoint)
+        }
+        if let logTail, logTail.isEmpty == false {
+            let snippet = logTail.split(whereSeparator: \.isNewline).suffix(4).joined(separator: " ")
+            return ApfelEndpoint.missingServerMessage(endpoint: endpoint, logPath: apfelLogURL.path) + " apfel output: \(snippet)"
+        }
+        return ApfelEndpoint.missingServerMessage(endpoint: endpoint, logPath: apfelLogURL.path)
     }
 
     private func shellWhich(_ executable: String) -> String? {

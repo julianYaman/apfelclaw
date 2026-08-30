@@ -114,6 +114,35 @@ func configServiceLoadsLegacyConfigWithoutDebugField() async throws {
 
     #expect(config.assistantName == "Apfelclaw")
     #expect(config.debug == false)
+    #expect(config.apfelHost == "127.0.0.1")
+    #expect(config.apfelPort == 11_434)
+}
+
+@Test
+func configServiceUpdatesApfelEndpoint() async throws {
+    let harness = try ConfigTestHarness()
+    let service = try harness.makeService()
+
+    let updated = try await service.update(
+        EditableAppConfigUpdate(apfelHost: " 127.0.0.1 ", apfelPort: 11_436)
+    )
+
+    #expect(updated.apfelHost == "127.0.0.1")
+    #expect(updated.apfelPort == 11_436)
+    #expect(await service.currentAppConfig().apfelPort == 11_436)
+}
+
+@Test
+func configServiceRejectsInvalidApfelPort() async throws {
+    let harness = try ConfigTestHarness()
+    let service = try harness.makeService()
+
+    do {
+        _ = try await service.update(EditableAppConfigUpdate(apfelPort: 70_000))
+        Issue.record("Expected invalid apfelPort to be rejected.")
+    } catch {
+        #expect(error.localizedDescription.contains("'apfelPort' must be between 1 and 65535"))
+    }
 }
 
 private struct ConfigTestHarness {

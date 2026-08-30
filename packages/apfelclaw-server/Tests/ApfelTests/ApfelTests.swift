@@ -67,6 +67,7 @@ func apfelHealthParserReadsPrewarmedAndContextWindow() {
     #expect(health.prewarmed == true)
     #expect(health.contextWindow == 4096)
     #expect(health.version == "1.9.1")
+    #expect(health.isApfel == true)
 }
 
 @Test
@@ -77,12 +78,68 @@ func apfelHealthParserTreatsZeroContextWindowAsUnknown() {
     #expect(health.reachable == true)
     #expect(health.contextWindow == nil)
     #expect(health.prewarmed == false)
+    #expect(health.isApfel == true)
+}
+
+@Test
+func apfelHealthParserDoesNotTreatGenericOkAsApfel() {
+    let health = ApfelRuntimeHealth.parse(data: Data(#"{"status":"ok"}"#.utf8), httpStatusCode: 200)
+    #expect(health.reachable == true)
+    #expect(health.isApfel == false)
+    #expect(health.httpStatusCode == 200)
 }
 
 @Test
 func apfelHealthParserTreatsNonSuccessAsUnreachable() {
     let health = ApfelRuntimeHealth.parse(data: Data(#"{"status":"ok"}"#.utf8), httpStatusCode: 503)
-    #expect(health == .unreachable)
+    #expect(health.reachable == false)
+    #expect(health.isApfel == false)
+    #expect(health.httpStatusCode == 503)
+}
+
+@Test
+func apfelEndpointPrefersApfelclawEnvironmentOverConfig() {
+    let config = AppConfig(
+        assistantName: "Apfelclaw",
+        userName: "You",
+        approvalMode: .trustedReadonly,
+        memoryEnabled: true,
+        apfelHost: "10.0.0.8",
+        apfelPort: 11_436
+    )
+    let endpoint = ApfelEndpoint.resolve(
+        config: config,
+        environment: [
+            "APFELCLAW_APFEL_HOST": "127.0.0.1",
+            "APFELCLAW_APFEL_PORT": "11440",
+            "APFEL_HOST": "192.168.1.2",
+            "APFEL_PORT": "11434",
+        ]
+    )
+
+    #expect(endpoint.host == "127.0.0.1")
+    #expect(endpoint.port == 11_440)
+}
+
+@Test
+func apfelEndpointFallsBackToApfelEnvironmentThenDefaults() {
+    let fromApfelEnv = ApfelEndpoint.resolve(
+        config: .default,
+        environment: ["APFEL_PORT": "11436"]
+    )
+    #expect(fromApfelEnv.host == "127.0.0.1")
+    #expect(fromApfelEnv.port == 11_436)
+
+    let defaults = ApfelEndpoint.resolve(config: .default, environment: [:])
+    #expect(defaults.host == "127.0.0.1")
+    #expect(defaults.port == 11_434)
+}
+
+@Test
+func apfelOccupiedPortMessageMentionsOllamaOnDefaultPort() {
+    let message = ApfelEndpoint.occupiedPortMessage(endpoint: ApfelEndpoint(host: "127.0.0.1", port: 11_434))
+    #expect(message.contains("Ollama"))
+    #expect(message.contains("apfelPort"))
 }
 
 @Test

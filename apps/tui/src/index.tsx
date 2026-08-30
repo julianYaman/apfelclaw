@@ -7,6 +7,8 @@ type ConfigResponse = {
   userName: string
   approvalMode: string
   debug: boolean
+  apfelHost: string
+  apfelPort: number
 }
 
 type TelegramRemoteControlStatus = {
@@ -39,6 +41,9 @@ type ApfelRuntimeHealth = {
   model: string | null
   version: string | null
   activeRequests: number | null
+  isApfel?: boolean
+  host?: string | null
+  port?: number | null
 }
 
 type ApfelStatusResponse = {
@@ -176,11 +181,13 @@ function formatConfigSummary(config: ConfigResponse) {
     `userName: ${config.userName}`,
     `approvalMode: ${config.approvalMode}`,
     `debug: ${config.debug}`,
+    `apfelHost: ${config.apfelHost}`,
+    `apfelPort: ${config.apfelPort}`,
   ].join("\n")
 }
 
 function parseConfigSetCommand(content: string) {
-  const match = content.match(/^\/config\s+set\s+(assistantName|userName|approvalMode|debug)\s+(.+)$/)
+  const match = content.match(/^\/config\s+set\s+(assistantName|userName|approvalMode|debug|apfelHost|apfelPort)\s+(.+)$/)
   if (!match) return null
 
   const field = match[1] as keyof ConfigResponse
@@ -201,8 +208,12 @@ function formatApfelStatusSummary(status: ApfelStatusResponse) {
     `apfel recommendedMinimumVersion: ${status.recommendedMinimumVersion ?? "1.8.4"}`,
     `apfel meetsRecommendedMinimum: ${status.meetsRecommendedMinimum ?? "unknown"}`,
     `apfel reachable: ${status.runtime?.reachable ?? "unknown"}`,
+    `apfel isApfel: ${status.runtime?.isApfel ?? "unknown"}`,
   ]
 
+  if (status.runtime?.host && status.runtime?.port != null) {
+    lines.push(`apfel endpoint: ${status.runtime.host}:${status.runtime.port}`)
+  }
   if (status.runtime?.modelAvailable != null) {
     lines.push(`apfel modelAvailable: ${status.runtime.modelAvailable}`)
   }
@@ -255,7 +266,7 @@ function formatApfelBadge(status: ApfelStatusResponse | null) {
   if (status.maintenance.inProgress) {
     return `apfel:${status.maintenance.operation ?? "maintenance"}`
   }
-  if (status.runtime && status.runtime.reachable === false) {
+  if (status.runtime && (status.runtime.reachable === false || status.runtime.isApfel === false)) {
     return "apfel:down"
   }
   if (status.runtime?.modelAvailable === false) {
@@ -278,8 +289,8 @@ function formatApfelStatusHint(status: ApfelStatusResponse | null) {
   if (status.maintenance.inProgress) {
     return status.maintenance.message ?? "apfel maintenance is in progress."
   }
-  if (status.runtime && status.runtime.reachable === false) {
-    return "apfel is not reachable"
+  if (status.runtime && (status.runtime.reachable === false || status.runtime.isApfel === false)) {
+    return status.lastError ?? "apfel is not reachable"
   }
   if (status.runtime?.modelAvailable === false) {
     return "apfel model is unavailable"
@@ -648,6 +659,8 @@ function App({ shutdown }: AppProps) {
             "/config set userName <value>",
             "/config set approvalMode <always|ask-once-per-tool-per-session|trusted-readonly>",
             "/config set debug <true|false>",
+            "/config set apfelHost <host>",
+            "/config set apfelPort <port>",
             "/remotecontrol shows remote control status.",
             "/remotecontrol setup telegram <botToken>",
             "/remotecontrol status telegram",
@@ -723,9 +736,16 @@ function App({ shutdown }: AppProps) {
           throw new Error("debug must be either true or false.")
         }
 
-        const patchValue = configUpdate.field === "debug"
-          ? configUpdate.value === "true"
-          : configUpdate.value
+        let patchValue: string | boolean | number = configUpdate.value
+        if (configUpdate.field === "debug") {
+          patchValue = configUpdate.value === "true"
+        } else if (configUpdate.field === "apfelPort") {
+          const port = Number.parseInt(configUpdate.value, 10)
+          if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new Error("'apfelPort' must be an integer between 1 and 65535.")
+          }
+          patchValue = port
+        }
 
         const response = await requireOK(
           await fetch(`${API_BASE}/config`, {
@@ -736,11 +756,15 @@ function App({ shutdown }: AppProps) {
         )
         const updatedConfig = (await response.json()) as ConfigResponse
         setConfig(updatedConfig)
+        const restartNote =
+          configUpdate.field === "apfelHost" || configUpdate.field === "apfelPort"
+            ? "\nRestart apfelclaw for the new apfel endpoint to take effect."
+            : ""
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            content: `Updated config.\n${formatConfigSummary(updatedConfig)}`,
+            content: `Updated config.\n${formatConfigSummary(updatedConfig)}${restartNote}`,
           },
         ])
         setStatus("Connected")

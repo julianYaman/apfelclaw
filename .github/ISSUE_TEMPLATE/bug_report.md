@@ -34,3 +34,10 @@ Describe what happened instead.
 ## Logs or screenshots
 
 Paste relevant logs, stack traces, or screenshots.
+
+If the backend never starts under Homebrew, include:
+
+- `/opt/homebrew/var/log/apfelclaw.log` or `/usr/local/var/log/apfelclaw.log`
+- `~/Library/Logs/apfelclaw/apfelclaw.log` if it exists
+- Whether Ollama or another service is already using port 11434
+

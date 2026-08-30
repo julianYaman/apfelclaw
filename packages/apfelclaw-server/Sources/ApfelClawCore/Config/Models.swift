@@ -26,6 +26,8 @@ public struct AppConfig: Codable, Sendable {
     public var defaultCalendarScope: String
     public var terminalToolsEnabled: Bool
     public var apfelAutostartEnabled: Bool
+    public var apfelHost: String?
+    public var apfelPort: Int?
 
     public init(
         assistantName: String,
@@ -35,7 +37,9 @@ public struct AppConfig: Codable, Sendable {
         memoryEnabled: Bool,
         defaultCalendarScope: String = "all-visible",
         terminalToolsEnabled: Bool = true,
-        apfelAutostartEnabled: Bool = true
+        apfelAutostartEnabled: Bool = true,
+        apfelHost: String? = nil,
+        apfelPort: Int? = nil
     ) {
         self.assistantName = assistantName
         self.userName = userName
@@ -45,6 +49,8 @@ public struct AppConfig: Codable, Sendable {
         self.defaultCalendarScope = defaultCalendarScope
         self.terminalToolsEnabled = terminalToolsEnabled
         self.apfelAutostartEnabled = apfelAutostartEnabled
+        self.apfelHost = apfelHost
+        self.apfelPort = apfelPort
     }
 
     enum CodingKeys: String, CodingKey {
@@ -56,6 +62,8 @@ public struct AppConfig: Codable, Sendable {
         case defaultCalendarScope
         case terminalToolsEnabled
         case apfelAutostartEnabled
+        case apfelHost
+        case apfelPort
     }
 
     public init(from decoder: Decoder) throws {
@@ -68,6 +76,8 @@ public struct AppConfig: Codable, Sendable {
         self.defaultCalendarScope = try container.decodeIfPresent(String.self, forKey: .defaultCalendarScope) ?? "all-visible"
         self.terminalToolsEnabled = try container.decodeIfPresent(Bool.self, forKey: .terminalToolsEnabled) ?? true
         self.apfelAutostartEnabled = try container.decodeIfPresent(Bool.self, forKey: .apfelAutostartEnabled) ?? true
+        self.apfelHost = try container.decodeIfPresent(String.self, forKey: .apfelHost)
+        self.apfelPort = try container.decodeIfPresent(Int.self, forKey: .apfelPort)
     }
 }
 
@@ -76,25 +86,34 @@ public struct EditableAppConfig: Codable, Equatable, Sendable {
     public var userName: String
     public var approvalMode: String
     public var debug: Bool
+    public var apfelHost: String
+    public var apfelPort: Int
 
     public init(
         assistantName: String,
         userName: String,
         approvalMode: String,
-        debug: Bool
+        debug: Bool,
+        apfelHost: String,
+        apfelPort: Int
     ) {
         self.assistantName = assistantName
         self.userName = userName
         self.approvalMode = approvalMode
         self.debug = debug
+        self.apfelHost = apfelHost
+        self.apfelPort = apfelPort
     }
 
     public init(config: AppConfig) {
+        let endpoint = ApfelEndpoint.resolve(config: config)
         self.init(
             assistantName: config.assistantName,
             userName: config.userName,
             approvalMode: config.approvalMode.rawValue,
-            debug: config.debug
+            debug: config.debug,
+            apfelHost: endpoint.host,
+            apfelPort: endpoint.port
         )
     }
 }
@@ -104,17 +123,23 @@ public struct EditableAppConfigUpdate: Codable, Equatable, Sendable {
     public var userName: String?
     public var approvalMode: String?
     public var debug: Bool?
+    public var apfelHost: String?
+    public var apfelPort: Int?
 
     public init(
         assistantName: String? = nil,
         userName: String? = nil,
         approvalMode: String? = nil,
-        debug: Bool? = nil
+        debug: Bool? = nil,
+        apfelHost: String? = nil,
+        apfelPort: Int? = nil
     ) {
         self.assistantName = assistantName
         self.userName = userName
         self.approvalMode = approvalMode
         self.debug = debug
+        self.apfelHost = apfelHost
+        self.apfelPort = apfelPort
     }
 }
 

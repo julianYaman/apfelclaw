@@ -88,11 +88,24 @@ A typical config looks like:
   "assistantName": "Apfelclaw",
   "userName": "You",
   "approvalMode": "trusted-readonly",
-  "debug": false
+  "debug": false,
+  "apfelHost": "127.0.0.1",
+  "apfelPort": 11434
 }
 ```
 
 See the [API Reference](/docs/api) for details on reading and updating config via the REST API.
+
+`apfelHost` and `apfelPort` tell apfelclaw where to find the local `apfel` server. Defaults are `127.0.0.1:11434`. If that port is already taken (Ollama uses the same default), set a free port and restart apfelclaw:
+
+```json
+{
+  "apfelHost": "127.0.0.1",
+  "apfelPort": 11436
+}
+```
+
+You can also set `/config set apfelPort 11436` in chat, then restart the backend. Environment overrides are `APFELCLAW_APFEL_HOST` / `APFELCLAW_APFEL_PORT`, then `APFEL_HOST` / `APFEL_PORT`.
 
 When the assistant needs fresh local or personal data, it may ask for a clarification instead of guessing.
 
@@ -107,6 +120,31 @@ apfelclaw checks in the background whether your installed `apfel` binary is curr
 - `/version` shows the current backend and `apfel` version status
 - `/apfel status` shows detailed `apfel` version, update, runtime health (`prewarmed`, `contextWindow`), and whether the install meets the recommended 1.8.4 minimum
 - `/apfel restart` and `/apfel upgrade` are explicit commands that require a second `confirm` command before running
+
+## Troubleshooting
+
+### Backend never starts, or Homebrew keeps restarting apfelclaw
+
+Ollama and apfel both default to port `11434`. If Ollama (or another service) already owns that port, apfelclaw used to wait, fail, and crash — which made `brew services` restart it forever.
+
+Current behavior:
+
+- The apfelclaw backend stays up even if apfel is missing or the port is occupied
+- Chat fails with a message that names the occupied port and how to point at a different one
+- `apfelclaw --status` and `/apfel status` show the configured endpoint and `lastError`
+
+If you installed with Homebrew, the service log is usually:
+
+- `/opt/homebrew/var/log/apfelclaw.log` on Apple Silicon
+- `/usr/local/var/log/apfelclaw.log` on Intel Homebrew prefixes
+
+The CLI also writes `~/Library/Logs/apfelclaw/apfelclaw.log` when it starts the backend itself.
+
+Fix:
+
+1. Run apfel on a free port, for example `apfel --permissive --serve --host 127.0.0.1 --port 11436`
+2. Set `"apfelPort": 11436` in `~/.apfelclaw/config.json`, or `APFELCLAW_APFEL_PORT=11436`
+3. Restart apfelclaw (`brew services restart apfelclaw`, or `apfelclaw stop` then `apfelclaw serve`)
 
 ## What's next
 

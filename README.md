@@ -129,13 +129,16 @@ Config API:
   "assistantName": "Apfelclaw",
   "userName": "You",
   "approvalMode": "trusted-readonly",
-  "debug": false
+  "debug": false,
+  "apfelHost": "127.0.0.1",
+  "apfelPort": 11434
 }
 ```
 
 - `PATCH /config` accepts the same flat keys as optional fields and returns the updated config.
 - Supported `approvalMode` values are `always`, `ask-once-per-tool-per-session`, and `trusted-readonly`.
 - `debug` is a boolean global flag for backend debug logging.
+- `apfelHost` / `apfelPort` select the local apfel server. Defaults are `127.0.0.1:11434`. If Ollama already uses that port, set a free `apfelPort` and restart apfelclaw.
 - Empty or whitespace-only names are rejected. Name fields are trimmed and capped at 80 characters.
 
 ## Contributor notes
