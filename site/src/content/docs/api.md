@@ -11,7 +11,7 @@ The apfelclaw backend exposes a local REST API on `127.0.0.1:4242`. All endpoint
 Every HTTP response includes:
 
 ```
-Server: apfelclaw/0.2.2
+Server: apfelclaw/0.2.3
 ```
 
 ## Endpoints
