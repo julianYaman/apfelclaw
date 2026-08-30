@@ -51,6 +51,10 @@ public struct ApfelRuntimeHealth: Codable, Sendable, Equatable {
     public let model: String?
     public let version: String?
     public let activeRequests: Int?
+    public let isApfel: Bool
+    public let host: String?
+    public let port: Int?
+    public let httpStatusCode: Int?
 
     public init(
         reachable: Bool,
@@ -60,7 +64,11 @@ public struct ApfelRuntimeHealth: Codable, Sendable, Equatable {
         contextWindow: Int? = nil,
         model: String? = nil,
         version: String? = nil,
-        activeRequests: Int? = nil
+        activeRequests: Int? = nil,
+        isApfel: Bool = false,
+        host: String? = nil,
+        port: Int? = nil,
+        httpStatusCode: Int? = nil
     ) {
         self.reachable = reachable
         self.status = status
@@ -70,24 +78,58 @@ public struct ApfelRuntimeHealth: Codable, Sendable, Equatable {
         self.model = model
         self.version = version
         self.activeRequests = activeRequests
+        self.isApfel = isApfel
+        self.host = host
+        self.port = port
+        self.httpStatusCode = httpStatusCode
     }
 
     public static let unreachable = ApfelRuntimeHealth(
         reachable: false
     )
 
-    static func parse(data: Data, httpStatusCode: Int) -> ApfelRuntimeHealth {
+    static func looksLikeApfel(model: String?, prewarmed: Bool?, contextWindow: Int?) -> Bool {
+        if model == "apple-foundationmodel" {
+            return true
+        }
+        if prewarmed != nil {
+            return true
+        }
+        if let contextWindow, contextWindow > 0 {
+            return true
+        }
+        return false
+    }
+
+    static func parse(data: Data, httpStatusCode: Int, endpoint: ApfelEndpoint? = nil) -> ApfelRuntimeHealth {
         guard (200 ..< 300).contains(httpStatusCode) else {
-            return .unreachable
+            return ApfelRuntimeHealth(
+                reachable: false,
+                isApfel: false,
+                host: endpoint?.host,
+                port: endpoint?.port,
+                httpStatusCode: httpStatusCode
+            )
         }
 
         guard let payload = try? JSONDecoder().decode(ApfelHealthPayload.self, from: data) else {
-            return ApfelRuntimeHealth(reachable: true)
+            return ApfelRuntimeHealth(
+                reachable: true,
+                isApfel: false,
+                host: endpoint?.host,
+                port: endpoint?.port,
+                httpStatusCode: httpStatusCode
+            )
         }
 
         let contextWindow = payload.contextWindow.flatMap { value in
             value > 0 ? value : nil
         }
+        let isApfel = looksLikeApfel(
+            model: payload.model,
+            prewarmed: payload.prewarmed,
+            contextWindow: contextWindow
+        )
 
         return ApfelRuntimeHealth(
             reachable: true,
@@ -97,7 +139,11 @@ public struct ApfelRuntimeHealth: Codable, Sendable, Equatable {
             contextWindow: contextWindow,
             model: payload.model,
             version: payload.version,
-            activeRequests: payload.activeRequests
+            activeRequests: payload.activeRequests,
+            isApfel: isApfel,
+            host: endpoint?.host,
+            port: endpoint?.port,
+            httpStatusCode: httpStatusCode
         )
     }
 }
@@ -225,7 +271,11 @@ struct ApfelStatusSnapshot: Sendable {
         lastError: nil
     )
 
-    func response(maintenance: ApfelMaintenanceState, runtime: ApfelRuntimeHealth = .unreachable) -> ApfelStatusResponse {
+    func response(
+        maintenance: ApfelMaintenanceState,
+        runtime: ApfelRuntimeHealth = .unreachable,
+        lastError: String? = nil
+    ) -> ApfelStatusResponse {
         ApfelStatusResponse(
             executablePath: environment.executablePath,
             installedVersion: environment.installedVersion,
@@ -238,7 +288,7 @@ struct ApfelStatusSnapshot: Sendable {
             upgradeCommand: upgradeCommand,
             releaseURL: releaseURL,
             lastCheckedAt: lastCheckedAt,
-            lastError: lastError,
+            lastError: lastError ?? self.lastError,
             maintenance: maintenance,
             meetsRecommendedMinimum: ApfelCompatibility.meetsRecommendedMinimum(environment.installedVersion),
             runtime: runtime

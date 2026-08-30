@@ -73,13 +73,16 @@ Once linked, the Telegram chat can use the shared command layer:
 - `/apfel restart` asks for confirmation, and `/apfel restart confirm` performs the restart when supported
 - `/apfel upgrade` asks for confirmation, and `/apfel upgrade confirm` upgrades Homebrew-managed apfel and restarts it when supported
 - `/config` shows the current config
-- `/config set ...` updates the editable config fields
+- `/config set ...` updates the editable config fields (`assistantName`, `userName`, `approvalMode`, `debug`, `apfelHost`, `apfelPort`)
 
 Example:
 
 ```text
 /config set assistantName Orbit
+/config set apfelPort 11436
 ```
+
+`apfelHost` and `apfelPort` need a backend restart before they take effect.
 
 ## Runtime behavior
 

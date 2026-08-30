@@ -72,9 +72,13 @@ public actor CommandService {
         if let parsedUpdate = parseConfigSetCommand(trimmed) {
             let update = try parsedUpdate.get()
             let updated = try await configService.update(update)
+            var responseText = "Updated config.\n\(formatConfigSummary(updated))"
+            if update.apfelHost != nil || update.apfelPort != nil {
+                responseText += "\nRestart apfelclaw for the new apfel endpoint to take effect."
+            }
             return CommandHandlingResult(
                 handled: true,
-                responseText: "Updated config.\n\(formatConfigSummary(updated))",
+                responseText: responseText,
                 sessionID: sessionID
             )
         }
@@ -104,7 +108,7 @@ public actor CommandService {
     }
 
     private func parseConfigSetCommand(_ content: String) -> Result<EditableAppConfigUpdate, AppError>? {
-        let pattern = #"^/config\s+set\s+(assistantName|userName|approvalMode|debug)\s+(.+)$"#
+        let pattern = #"^/config\s+set\s+(assistantName|userName|approvalMode|debug|apfelHost|apfelPort)\s+(.+)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return nil
         }
@@ -131,6 +135,13 @@ public actor CommandService {
                 return .failure(AppError.message("debug must be either true or false."))
             }
             return .success(EditableAppConfigUpdate(debug: value == "true"))
+        case "apfelHost":
+            return .success(EditableAppConfigUpdate(apfelHost: value))
+        case "apfelPort":
+            guard let port = Int(value) else {
+                return .failure(AppError.message("'apfelPort' must be an integer between 1 and 65535."))
+            }
+            return .success(EditableAppConfigUpdate(apfelPort: port))
         default:
             return nil
         }
@@ -142,6 +153,8 @@ public actor CommandService {
             "userName: \(config.userName)",
             "approvalMode: \(config.approvalMode)",
             "debug: \(config.debug)",
+            "apfelHost: \(config.apfelHost)",
+            "apfelPort: \(config.apfelPort)",
         ].joined(separator: "\n")
     }
 
@@ -161,6 +174,8 @@ public actor CommandService {
             "/config set userName <value>",
             "/config set approvalMode <always|ask-once-per-tool-per-session|trusted-readonly>",
             "/config set debug <true|false>",
+            "/config set apfelHost <host>",
+            "/config set apfelPort <port>",
         ]
         if source == .telegram {
             lines.append("/remotecontrol is only available in the local TUI.")
@@ -238,8 +253,12 @@ public actor CommandService {
             "apfel recommendedMinimumVersion: \(status.recommendedMinimumVersion)",
             "apfel meetsRecommendedMinimum: \(status.meetsRecommendedMinimum.map(String.init) ?? "unknown")",
             "apfel reachable: \(status.runtime.reachable)",
+            "apfel isApfel: \(status.runtime.isApfel)",
         ]
 
+        if let host = status.runtime.host, let port = status.runtime.port {
+            lines.append("apfel endpoint: \(host):\(port)")
+        }
         if let modelAvailable = status.runtime.modelAvailable {
             lines.append("apfel modelAvailable: \(modelAvailable)")
         }

@@ -46,6 +46,12 @@ public actor ConfigService {
         if let debug = update.debug {
             next.debug = debug
         }
+        if let apfelHost = update.apfelHost {
+            next.apfelHost = try ApfelEndpoint.validateHost(apfelHost)
+        }
+        if let apfelPort = update.apfelPort {
+            next.apfelPort = try ApfelEndpoint.validatePort(apfelPort)
+        }
 
         try settingsStore.save(next)
         config = next

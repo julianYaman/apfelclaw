@@ -115,9 +115,11 @@ public struct CompletionOutcome: Sendable {
 }
 
 public final class ModelClient: ModelCompleting, Sendable {
-    private let baseURL = URL(string: "http://127.0.0.1:11434/v1/chat/completions")!
+    private let baseURL: URL
 
-    public init() {}
+    public init(baseURL: URL = URL(string: "http://127.0.0.1:11434/v1/chat/completions")!) {
+        self.baseURL = baseURL
+    }
 
     public func complete(
         messages: [ChatMessage],

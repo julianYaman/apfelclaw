@@ -359,7 +359,12 @@ private struct ServerBootstrap: @unchecked Sendable {
         }
 
         let apfelManager = ApfelManager(config: config)
-        _ = try await apfelManager.ensureServerRunning()
+        do {
+            _ = try await apfelManager.ensureServerRunning()
+        } catch {
+            let message = error.localizedDescription
+            FileHandle.standardError.write(Data("apfelclaw: \(message)\n".utf8))
+        }
         let apfelUpdateService = ApfelUpdateService(apfelManager: apfelManager)
         let apfelMaintenanceService = ApfelMaintenanceService(
             apfelManager: apfelManager,
@@ -372,10 +377,11 @@ private struct ServerBootstrap: @unchecked Sendable {
         let conversationService = ConversationService(
             memoryStore: memoryStore,
             configService: configService,
-            modelClient: ModelClient(),
+            modelClient: ModelClient(baseURL: apfelManager.endpoint.completionsURL),
             toolRuntime: toolRuntime,
             eventHub: eventHub,
-            apfelMaintenanceService: apfelMaintenanceService
+            apfelMaintenanceService: apfelMaintenanceService,
+            apfelManager: apfelManager
         )
         let commandService = CommandService(
             configService: configService,

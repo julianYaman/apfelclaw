@@ -66,7 +66,9 @@ Returns the current global configuration as a flat JSON object:
   "assistantName": "Apfelclaw",
   "userName": "You",
   "approvalMode": "trusted-readonly",
-  "debug": false
+  "debug": false,
+  "apfelHost": "127.0.0.1",
+  "apfelPort": 11434
 }
 ```
 
@@ -77,6 +79,9 @@ Accepts any subset of the config fields as optional keys and returns the updated
 - Empty or whitespace-only names are rejected
 - Name fields are trimmed and capped at 80 characters
 - `debug` is a boolean flag that enables verbose backend logging (HTTP requests, IntentRouter decisions, tool call arguments and results)
+- `apfelHost` is a non-empty hostname or IP for the local apfel server
+- `apfelPort` is an integer between 1 and 65535
+- Changing `apfelHost` or `apfelPort` is persisted immediately, but the backend must be restarted before it talks to the new endpoint
 
 ### Approval modes
 
@@ -135,9 +140,9 @@ Returns a JSON object with fields such as:
 - `maintenance`
 - `recommendedMinimumVersion`
 - `meetsRecommendedMinimum`
-- `runtime` (`reachable`, `status`, `modelAvailable`, `prewarmed`, `contextWindow`, `model`, `version`, `activeRequests`)
+- `runtime` (`reachable`, `isApfel`, `host`, `port`, `status`, `modelAvailable`, `prewarmed`, `contextWindow`, `model`, `version`, `activeRequests`)
 
-`runtime` is parsed live from apfel's `GET /health`. A `context_window` of `0` is treated as unknown. `recommendedMinimumVersion` is `1.8.4`.
+`runtime` is parsed live from apfel's `GET /health`. A generic HTTP 200 (for example Ollama on port 11434) is not treated as apfel. A `context_window` of `0` is treated as unknown. `recommendedMinimumVersion` is `1.8.4`. `lastError` includes connect failures such as an occupied port.
 
 The backend checks for updates in the background on startup and then periodically. Homebrew installs compare against the Homebrew formula feed, while non-Homebrew installs compare against the latest GitHub release.
 

@@ -129,7 +129,9 @@ public actor ApfelUpdateService {
     }
 
     public func currentResponse(maintenance: ApfelMaintenanceState) async -> ApfelStatusResponse {
-        snapshot.response(maintenance: maintenance, runtime: await apfelManager.runtimeHealth())
+        let runtime = await apfelManager.runtimeHealth()
+        let lastError = apfelManager.connectError() ?? snapshot.lastError
+        return snapshot.response(maintenance: maintenance, runtime: runtime, lastError: lastError)
     }
 
     func currentSnapshot() -> ApfelStatusSnapshot {

@@ -24,6 +24,7 @@ public final class ConversationService: @unchecked Sendable {
     private let toolRuntime: ToolRuntime
     private let eventHub: SessionEventHub?
     private let apfelMaintenanceService: ApfelMaintenanceService?
+    private let apfelManager: ApfelManager?
 
     public init(
         memoryStore: MemoryStore,
@@ -31,7 +32,8 @@ public final class ConversationService: @unchecked Sendable {
         modelClient: any ModelCompleting,
         toolRuntime: ToolRuntime,
         eventHub: SessionEventHub? = nil,
-        apfelMaintenanceService: ApfelMaintenanceService? = nil
+        apfelMaintenanceService: ApfelMaintenanceService? = nil,
+        apfelManager: ApfelManager? = nil
     ) {
         self.memoryStore = memoryStore
         self.configService = configService
@@ -39,6 +41,7 @@ public final class ConversationService: @unchecked Sendable {
         self.toolRuntime = toolRuntime
         self.eventHub = eventHub
         self.apfelMaintenanceService = apfelMaintenanceService
+        self.apfelManager = apfelManager
     }
 
     public func createSession(title: String? = nil) throws -> SessionRecord {
@@ -66,6 +69,7 @@ public final class ConversationService: @unchecked Sendable {
         }
 
         try await apfelMaintenanceService?.ensureAvailable()
+        try await apfelManager?.ensureReadyForRequests()
 
         let config = await configService.currentAppConfig()
         let toolPolicy = ToolPolicy(approvalMode: config.approvalMode)

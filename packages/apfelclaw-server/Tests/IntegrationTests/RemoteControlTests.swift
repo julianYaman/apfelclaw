@@ -84,6 +84,26 @@ func commandServiceUpdatesConfigFromRemoteCommand() async throws {
 }
 
 @Test
+func commandServiceUpdatesApfelPortFromRemoteCommand() async throws {
+    let harness = try RemoteControlTestHarness()
+    let configService = try harness.makeConfigService()
+    let conversationService = try harness.makeConversationService(configService: configService)
+    let commandService = CommandService(configService: configService, conversationService: conversationService)
+    let session = try conversationService.createSession(title: "Initial")
+
+    let result = try await commandService.handleIfNeeded(
+        content: "/config set apfelPort 11436",
+        sessionID: session.id,
+        source: .telegram
+    )
+
+    #expect(result.handled == true)
+    #expect(result.responseText?.contains("apfelPort: 11436") == true)
+    #expect(result.responseText?.contains("Restart apfelclaw") == true)
+    #expect(await configService.current().apfelPort == 11_436)
+}
+
+@Test
 func commandServiceReturnsApfelStatusForRemoteCommand() async throws {
     let harness = try RemoteControlTestHarness()
     let configService = try harness.makeConfigService()
