@@ -49,7 +49,7 @@ function OnboardingApp({ options, onResolve, onReject }) {
       total: 6,
       title: 'Welcome to apfelclaw',
       description:
-        'A local-first macOS AI agent that uses apfel for on-device model execution. This guide will save your defaults, start the backend, and optionally connect Telegram.',
+        'A local-first macOS AI agent that uses apfel 1.8.4 or newer for on-device model execution. This guide will save your defaults, start the backend, and optionally connect Telegram.',
       actionLabel: 'Press Enter to begin',
       accentColor: 'magenta',
       onContinue: () => setPhase('assistant'),
@@ -118,7 +118,7 @@ function OnboardingApp({ options, onResolve, onReject }) {
       title: 'apfel Startup',
       description: 'Decide whether apfelclaw may start apfel automatically when it needs the model backend.',
       items: [
-        { label: 'Enable', value: true, description: 'Recommended for a smoother first-run experience.' },
+        { label: 'Enable', value: true, description: 'Recommended. apfelclaw can start apfel 1.8.4+ automatically when the model is needed.' },
         { label: 'Disable', value: false, description: 'You will manage apfel manually.' },
       ],
       initialValue: autostartEnabled,

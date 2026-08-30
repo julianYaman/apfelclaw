@@ -30,6 +30,17 @@ type ApfelMaintenanceState = {
   message: string | null
 }
 
+type ApfelRuntimeHealth = {
+  reachable: boolean
+  status: string | null
+  modelAvailable: boolean | null
+  prewarmed: boolean | null
+  contextWindow: number | null
+  model: string | null
+  version: string | null
+  activeRequests: number | null
+}
+
 type ApfelStatusResponse = {
   executablePath: string | null
   installedVersion: string | null
@@ -44,6 +55,9 @@ type ApfelStatusResponse = {
   lastCheckedAt: string | null
   lastError: string | null
   maintenance: ApfelMaintenanceState
+  recommendedMinimumVersion?: string
+  meetsRecommendedMinimum?: boolean | null
+  runtime?: ApfelRuntimeHealth
 }
 
 type ApfelActionResponse = {
@@ -184,7 +198,20 @@ function formatApfelStatusSummary(status: ApfelStatusResponse) {
     `apfel updateAvailable: ${status.updateAvailable}`,
     `apfel canUpgrade: ${status.canUpgrade}`,
     `apfel canRestart: ${status.canRestart} [${status.restartMode}]`,
+    `apfel recommendedMinimumVersion: ${status.recommendedMinimumVersion ?? "1.8.4"}`,
+    `apfel meetsRecommendedMinimum: ${status.meetsRecommendedMinimum ?? "unknown"}`,
+    `apfel reachable: ${status.runtime?.reachable ?? "unknown"}`,
   ]
+
+  if (status.runtime?.modelAvailable != null) {
+    lines.push(`apfel modelAvailable: ${status.runtime.modelAvailable}`)
+  }
+  if (status.runtime?.prewarmed != null) {
+    lines.push(`apfel prewarmed: ${status.runtime.prewarmed}`)
+  }
+  if (status.runtime?.contextWindow != null) {
+    lines.push(`apfel contextWindow: ${status.runtime.contextWindow}`)
+  }
 
   if (status.executablePath) {
     lines.push(`apfel executablePath: ${status.executablePath}`)
@@ -228,8 +255,20 @@ function formatApfelBadge(status: ApfelStatusResponse | null) {
   if (status.maintenance.inProgress) {
     return `apfel:${status.maintenance.operation ?? "maintenance"}`
   }
+  if (status.runtime && status.runtime.reachable === false) {
+    return "apfel:down"
+  }
+  if (status.runtime?.modelAvailable === false) {
+    return "apfel:unavailable"
+  }
   if (status.updateAvailable && status.installedVersion && status.latestVersion) {
     return `apfel:${status.installedVersion}->${status.latestVersion}`
+  }
+  if (status.meetsRecommendedMinimum === false) {
+    return `apfel:${status.installedVersion ?? "old"}`
+  }
+  if (status.runtime?.contextWindow) {
+    return `apfel:${status.runtime.contextWindow}`
   }
   return null
 }
@@ -238,6 +277,19 @@ function formatApfelStatusHint(status: ApfelStatusResponse | null) {
   if (!status) return null
   if (status.maintenance.inProgress) {
     return status.maintenance.message ?? "apfel maintenance is in progress."
+  }
+  if (status.runtime && status.runtime.reachable === false) {
+    return "apfel is not reachable"
+  }
+  if (status.runtime?.modelAvailable === false) {
+    return "apfel model is unavailable"
+  }
+  if (status.runtime?.prewarmed === false) {
+    return "apfel is still warming up"
+  }
+  if (status.meetsRecommendedMinimum === false) {
+    const minimum = status.recommendedMinimumVersion ?? "1.8.4"
+    return `apfel ${status.installedVersion ?? "unknown"} is below recommended ${minimum}`
   }
   if (status.updateAvailable && status.installedVersion && status.latestVersion) {
     return `apfel update available: ${status.installedVersion} -> ${status.latestVersion}`
@@ -586,7 +638,7 @@ function App({ shutdown }: AppProps) {
             "/quit exits the TUI.",
             "/help shows this message.",
             "/version shows the apfelclaw and apfel version.",
-            "/apfel status shows update and maintenance status.",
+            "/apfel status shows update, runtime health, and maintenance status.",
             "/apfel restart asks for restart confirmation.",
             "/apfel restart confirm restarts apfel when supported.",
             "/apfel upgrade asks for upgrade confirmation.",

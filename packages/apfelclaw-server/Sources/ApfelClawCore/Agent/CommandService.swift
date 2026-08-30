@@ -151,7 +151,7 @@ public actor CommandService {
             "/new starts a fresh session.",
             "/help shows this message.",
             "/version shows the apfelclaw and apfel version.",
-            "/apfel status shows update and maintenance status.",
+            "/apfel status shows update, runtime health, and maintenance status.",
             "/apfel restart asks for restart confirmation.",
             "/apfel restart confirm restarts apfel when supported.",
             "/apfel upgrade asks for upgrade confirmation.",
@@ -235,7 +235,20 @@ public actor CommandService {
             "apfel updateAvailable: \(status.updateAvailable)",
             "apfel canUpgrade: \(status.canUpgrade)",
             "apfel canRestart: \(status.canRestart) [\(status.restartMode)]",
+            "apfel recommendedMinimumVersion: \(status.recommendedMinimumVersion)",
+            "apfel meetsRecommendedMinimum: \(status.meetsRecommendedMinimum.map(String.init) ?? "unknown")",
+            "apfel reachable: \(status.runtime.reachable)",
         ]
+
+        if let modelAvailable = status.runtime.modelAvailable {
+            lines.append("apfel modelAvailable: \(modelAvailable)")
+        }
+        if let prewarmed = status.runtime.prewarmed {
+            lines.append("apfel prewarmed: \(prewarmed)")
+        }
+        if let contextWindow = status.runtime.contextWindow {
+            lines.append("apfel contextWindow: \(contextWindow)")
+        }
 
         if let executablePath = status.executablePath {
             lines.append("apfel executablePath: \(executablePath)")

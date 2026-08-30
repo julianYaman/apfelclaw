@@ -9,9 +9,11 @@ order: 1
 Before running apfelclaw, make sure you have the following installed:
 
 - **macOS 26 Tahoe** or newer on Apple Silicon
-- **apfel** installed and available on your `PATH` ([github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel))
+- **apfel 1.8.4 or newer** installed and available on your `PATH` ([github.com/Arthur-Ficial/apfel](https://github.com/Arthur-Ficial/apfel))
 
 apfelclaw depends on Apple platform APIs (EventKit, Apple Mail, Spotlight) and uses `apfel` for on-device model execution. It is macOS-only, and its effective runtime requirement matches `apfel`. Homebrew installs also bring in the Node runtime used by the `apfelclaw` command tool.
+
+The recommended apfel floor is **1.8.4**. That release includes guided `json_schema` output, more reliable tool-call salvage, and the macOS 27 cold-start `context_window` fix. Older apfel versions can still start, but the TUI and `/apfel status` will warn that they are below the recommended minimum.
 
 ## Install with Homebrew
 
@@ -103,7 +105,7 @@ apfelclaw checks in the background whether your installed `apfel` binary is curr
 - Homebrew installs compare against the Homebrew formula version
 - Other installs compare against the latest GitHub release
 - `/version` shows the current backend and `apfel` version status
-- `/apfel status` shows detailed `apfel` version, update, and maintenance information
+- `/apfel status` shows detailed `apfel` version, update, runtime health (`prewarmed`, `contextWindow`), and whether the install meets the recommended 1.8.4 minimum
 - `/apfel restart` and `/apfel upgrade` are explicit commands that require a second `confirm` command before running
 
 ## What's next

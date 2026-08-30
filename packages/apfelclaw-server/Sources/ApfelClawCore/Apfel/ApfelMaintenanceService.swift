@@ -51,7 +51,10 @@ public actor ApfelMaintenanceService {
 
             state = .idle
             let refreshed = await updateService.refreshNow()
-            return ApfelActionResponse(message: message, status: refreshed.response(maintenance: state))
+            return ApfelActionResponse(
+                message: message,
+                status: refreshed.response(maintenance: state, runtime: await apfelManager.runtimeHealth())
+            )
         } catch {
             state = .idle
             throw error
@@ -93,7 +96,10 @@ public actor ApfelMaintenanceService {
             } else {
                 resolvedMessage = message
             }
-            return ApfelActionResponse(message: resolvedMessage, status: refreshed.response(maintenance: state))
+            return ApfelActionResponse(
+                message: resolvedMessage,
+                status: refreshed.response(maintenance: state, runtime: await apfelManager.runtimeHealth())
+            )
         } catch {
             state = .idle
             throw error
@@ -116,7 +122,7 @@ public actor ApfelMaintenanceService {
     }
 
     private func waitUntilHealthy() async throws {
-        let deadline = Date().addingTimeInterval(20)
+        let deadline = Date().addingTimeInterval(45)
         while Date() < deadline {
             if await apfelManager.isHealthy() {
                 return

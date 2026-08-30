@@ -6,8 +6,55 @@ public enum CompletionMode: Sendable {
     case toolAware
 }
 
+public struct StructuredOutputSchema: Sendable {
+    public let name: String
+    public let schema: JSONValue
+
+    public init(name: String, schema: JSONValue) {
+        self.name = name
+        self.schema = schema
+    }
+}
+
 public protocol ModelCompleting: Sendable {
-    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome
+    func complete(
+        messages: [ChatMessage],
+        tools: [ToolDefinition],
+        mode: CompletionMode,
+        responseSchema: StructuredOutputSchema?
+    ) async throws -> CompletionOutcome
+}
+
+extension ModelCompleting {
+    public func complete(
+        messages: [ChatMessage],
+        tools: [ToolDefinition] = [],
+        mode: CompletionMode = .toolAware
+    ) async throws -> CompletionOutcome {
+        try await complete(messages: messages, tools: tools, mode: mode, responseSchema: nil)
+    }
+}
+
+extension CompletionMode {
+    var temperature: Double {
+        switch self {
+        case .structuredText:
+            return 0
+        case .userFacingText, .toolAware:
+            return 0.2
+        }
+    }
+
+    var maxTokens: Int {
+        switch self {
+        case .structuredText:
+            return 256
+        case .toolAware:
+            return 500
+        case .userFacingText:
+            return 1_024
+        }
+    }
 }
 
 public struct ChatMessage: Codable, Sendable {
@@ -75,21 +122,19 @@ public final class ModelClient: ModelCompleting, Sendable {
     public func complete(
         messages: [ChatMessage],
         tools: [ToolDefinition] = [],
-        mode: CompletionMode = .toolAware
+        mode: CompletionMode = .toolAware,
+        responseSchema: StructuredOutputSchema? = nil
     ) async throws -> CompletionOutcome {
         var request = URLRequest(url: baseURL)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload = ChatCompletionRequest(
-            model: "apple-foundationmodel",
+        request.httpBody = try Self.encodeRequest(
             messages: messages,
-            temperature: 0.2,
-            maxTokens: 500,
-            tools: tools.isEmpty ? nil : tools.map(ChatCompletionRequest.Tool.init)
+            tools: tools,
+            mode: mode,
+            responseSchema: responseSchema
         )
-        request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -136,6 +181,23 @@ public final class ModelClient: ModelCompleting, Sendable {
         }
 
         throw AppError.message("apfel returned an empty response.")
+    }
+
+    static func encodeRequest(
+        messages: [ChatMessage],
+        tools: [ToolDefinition],
+        mode: CompletionMode,
+        responseSchema: StructuredOutputSchema?
+    ) throws -> Data {
+        let payload = ChatCompletionRequest(
+            model: "apple-foundationmodel",
+            messages: messages,
+            temperature: mode.temperature,
+            maxTokens: mode.maxTokens,
+            tools: tools.isEmpty ? nil : tools.map(ChatCompletionRequest.Tool.init),
+            responseFormat: responseSchema.map(ChatCompletionRequest.ResponseFormat.init)
+        )
+        return try JSONEncoder().encode(payload)
     }
 
     static func normalizeToolCall(_ toolCall: ChatToolCall) -> ToolCall {
@@ -236,7 +298,7 @@ public final class ModelClient: ModelCompleting, Sendable {
     }
 }
 
-private struct ChatCompletionRequest: Codable {
+private struct ChatCompletionRequest: Encodable {
     struct Tool: Codable {
         struct Function: Codable {
             let name: String
@@ -257,11 +319,33 @@ private struct ChatCompletionRequest: Codable {
         }
     }
 
+    struct ResponseFormat: Encodable {
+        struct JSONSchemaSpec: Encodable {
+            let name: String
+            let schema: JSONValue
+            let strict: Bool
+        }
+
+        let type: String
+        let jsonSchema: JSONSchemaSpec
+
+        init(schema: StructuredOutputSchema) {
+            self.type = "json_schema"
+            self.jsonSchema = JSONSchemaSpec(name: schema.name, schema: schema.schema, strict: true)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case jsonSchema = "json_schema"
+        }
+    }
+
     let model: String
     let messages: [ChatMessage]
     let temperature: Double
     let maxTokens: Int
     let tools: [Tool]?
+    let responseFormat: ResponseFormat?
 
     enum CodingKeys: String, CodingKey {
         case model
@@ -269,6 +353,17 @@ private struct ChatCompletionRequest: Codable {
         case temperature
         case maxTokens = "max_tokens"
         case tools
+        case responseFormat = "response_format"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(model, forKey: .model)
+        try container.encode(messages, forKey: .messages)
+        try container.encode(temperature, forKey: .temperature)
+        try container.encode(maxTokens, forKey: .maxTokens)
+        try container.encodeIfPresent(tools, forKey: .tools)
+        try container.encodeIfPresent(responseFormat, forKey: .responseFormat)
     }
 }
 

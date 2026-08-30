@@ -222,7 +222,7 @@ private struct RemoteControlTestHarness {
 }
 
 private struct CommandTestModelClient: ModelCompleting {
-    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode, responseSchema: StructuredOutputSchema?) async throws -> CompletionOutcome {
         CompletionOutcome(text: "", toolCall: nil)
     }
 }

@@ -52,6 +52,79 @@ func apfelUpdateServiceUsesHomebrewLatestVersionForHomebrewInstalls() async {
     #expect(response.canUpgrade == true)
     #expect(response.canRestart == true)
     #expect(response.restartMode == ApfelRestartMode.homebrewService.rawValue)
+    #expect(response.recommendedMinimumVersion == "1.8.4")
+    #expect(response.meetsRecommendedMinimum == false)
+}
+
+@Test
+func apfelHealthParserReadsPrewarmedAndContextWindow() {
+    let json = Data(#"{"status":"ok","model":"apple-foundationmodel","version":"1.9.1","active_requests":0,"context_window":4096,"model_available":true,"prewarmed":true}"#.utf8)
+    let health = ApfelRuntimeHealth.parse(data: json, httpStatusCode: 200)
+
+    #expect(health.reachable == true)
+    #expect(health.status == "ok")
+    #expect(health.modelAvailable == true)
+    #expect(health.prewarmed == true)
+    #expect(health.contextWindow == 4096)
+    #expect(health.version == "1.9.1")
+}
+
+@Test
+func apfelHealthParserTreatsZeroContextWindowAsUnknown() {
+    let json = Data(#"{"status":"ok","context_window":0,"model_available":true,"prewarmed":false}"#.utf8)
+    let health = ApfelRuntimeHealth.parse(data: json, httpStatusCode: 200)
+
+    #expect(health.reachable == true)
+    #expect(health.contextWindow == nil)
+    #expect(health.prewarmed == false)
+}
+
+@Test
+func apfelHealthParserTreatsNonSuccessAsUnreachable() {
+    let health = ApfelRuntimeHealth.parse(data: Data(#"{"status":"ok"}"#.utf8), httpStatusCode: 503)
+    #expect(health == .unreachable)
+}
+
+@Test
+func apfelCompatibilityFlagsVersionsBelowRecommended() {
+    #expect(ApfelCompatibility.meetsRecommendedMinimum("1.8.4") == true)
+    #expect(ApfelCompatibility.meetsRecommendedMinimum("1.9.1") == true)
+    #expect(ApfelCompatibility.meetsRecommendedMinimum("1.8.3") == false)
+    #expect(ApfelCompatibility.meetsRecommendedMinimum(nil) == nil)
+}
+
+@Test
+func structuredTextRequestsUseGuidedJSONAndGreedySampling() throws {
+    let body = try ModelClient.encodeRequest(
+        messages: [ChatMessage(role: "user", content: "hi")],
+        tools: [],
+        mode: .structuredText,
+        responseSchema: IntentRouter.classifierOutputSchema
+    )
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+
+    #expect((json?["temperature"] as? NSNumber)?.doubleValue == 0)
+    #expect((json?["max_tokens"] as? NSNumber)?.intValue == 256)
+    let format = json?["response_format"] as? [String: Any]
+    #expect(format?["type"] as? String == "json_schema")
+    let spec = format?["json_schema"] as? [String: Any]
+    #expect(spec?["name"] as? String == "intent_classifier")
+    #expect(spec?["strict"] as? Bool == true)
+}
+
+@Test
+func userFacingTextRequestsUseHigherOutputBudget() throws {
+    let body = try ModelClient.encodeRequest(
+        messages: [ChatMessage(role: "user", content: "hi")],
+        tools: [],
+        mode: .userFacingText,
+        responseSchema: nil
+    )
+    let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+
+    #expect((json?["temperature"] as? NSNumber)?.doubleValue == 0.2)
+    #expect((json?["max_tokens"] as? NSNumber)?.intValue == 1024)
+    #expect(json?["response_format"] == nil)
 }
 
 @Test

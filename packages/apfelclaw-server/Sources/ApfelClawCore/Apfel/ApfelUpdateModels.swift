@@ -31,6 +31,97 @@ public struct ApfelMaintenanceState: Codable, Sendable {
     public static let idle = ApfelMaintenanceState(inProgress: false)
 }
 
+public enum ApfelCompatibility {
+    public static let recommendedMinimumVersion = "1.8.4"
+
+    static func meetsRecommendedMinimum(_ version: String?) -> Bool? {
+        guard let version else {
+            return nil
+        }
+        return ApfelVersion.isNewer(recommendedMinimumVersion, than: version) == false
+    }
+}
+
+public struct ApfelRuntimeHealth: Codable, Sendable, Equatable {
+    public let reachable: Bool
+    public let status: String?
+    public let modelAvailable: Bool?
+    public let prewarmed: Bool?
+    public let contextWindow: Int?
+    public let model: String?
+    public let version: String?
+    public let activeRequests: Int?
+
+    public init(
+        reachable: Bool,
+        status: String? = nil,
+        modelAvailable: Bool? = nil,
+        prewarmed: Bool? = nil,
+        contextWindow: Int? = nil,
+        model: String? = nil,
+        version: String? = nil,
+        activeRequests: Int? = nil
+    ) {
+        self.reachable = reachable
+        self.status = status
+        self.modelAvailable = modelAvailable
+        self.prewarmed = prewarmed
+        self.contextWindow = contextWindow
+        self.model = model
+        self.version = version
+        self.activeRequests = activeRequests
+    }
+
+    public static let unreachable = ApfelRuntimeHealth(
+        reachable: false
+    )
+
+    static func parse(data: Data, httpStatusCode: Int) -> ApfelRuntimeHealth {
+        guard (200 ..< 300).contains(httpStatusCode) else {
+            return .unreachable
+        }
+
+        guard let payload = try? JSONDecoder().decode(ApfelHealthPayload.self, from: data) else {
+            return ApfelRuntimeHealth(reachable: true)
+        }
+
+        let contextWindow = payload.contextWindow.flatMap { value in
+            value > 0 ? value : nil
+        }
+
+        return ApfelRuntimeHealth(
+            reachable: true,
+            status: payload.status,
+            modelAvailable: payload.modelAvailable,
+            prewarmed: payload.prewarmed,
+            contextWindow: contextWindow,
+            model: payload.model,
+            version: payload.version,
+            activeRequests: payload.activeRequests
+        )
+    }
+}
+
+private struct ApfelHealthPayload: Decodable {
+    let status: String?
+    let model: String?
+    let version: String?
+    let modelAvailable: Bool?
+    let prewarmed: Bool?
+    let contextWindow: Int?
+    let activeRequests: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case model
+        case version
+        case modelAvailable = "model_available"
+        case prewarmed
+        case contextWindow = "context_window"
+        case activeRequests = "active_requests"
+    }
+}
+
 public struct ApfelStatusResponse: Codable, Sendable {
     public let executablePath: String?
     public let installedVersion: String?
@@ -45,6 +136,9 @@ public struct ApfelStatusResponse: Codable, Sendable {
     public let lastCheckedAt: String?
     public let lastError: String?
     public let maintenance: ApfelMaintenanceState
+    public let recommendedMinimumVersion: String
+    public let meetsRecommendedMinimum: Bool?
+    public let runtime: ApfelRuntimeHealth
 
     public init(
         executablePath: String?,
@@ -59,7 +153,10 @@ public struct ApfelStatusResponse: Codable, Sendable {
         releaseURL: String?,
         lastCheckedAt: String?,
         lastError: String?,
-        maintenance: ApfelMaintenanceState
+        maintenance: ApfelMaintenanceState,
+        recommendedMinimumVersion: String = ApfelCompatibility.recommendedMinimumVersion,
+        meetsRecommendedMinimum: Bool?,
+        runtime: ApfelRuntimeHealth
     ) {
         self.executablePath = executablePath
         self.installedVersion = installedVersion
@@ -74,6 +171,9 @@ public struct ApfelStatusResponse: Codable, Sendable {
         self.lastCheckedAt = lastCheckedAt
         self.lastError = lastError
         self.maintenance = maintenance
+        self.recommendedMinimumVersion = recommendedMinimumVersion
+        self.meetsRecommendedMinimum = meetsRecommendedMinimum
+        self.runtime = runtime
     }
 }
 
@@ -125,7 +225,7 @@ struct ApfelStatusSnapshot: Sendable {
         lastError: nil
     )
 
-    func response(maintenance: ApfelMaintenanceState) -> ApfelStatusResponse {
+    func response(maintenance: ApfelMaintenanceState, runtime: ApfelRuntimeHealth = .unreachable) -> ApfelStatusResponse {
         ApfelStatusResponse(
             executablePath: environment.executablePath,
             installedVersion: environment.installedVersion,
@@ -139,7 +239,9 @@ struct ApfelStatusSnapshot: Sendable {
             releaseURL: releaseURL,
             lastCheckedAt: lastCheckedAt,
             lastError: lastError,
-            maintenance: maintenance
+            maintenance: maintenance,
+            meetsRecommendedMinimum: ApfelCompatibility.meetsRecommendedMinimum(environment.installedVersion),
+            runtime: runtime
         )
     }
 }

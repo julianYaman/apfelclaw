@@ -51,6 +51,8 @@ Returns an aggregate status payload with fields such as:
 - `apfel`
 - `remoteControl`
 
+The nested `apfel` object is the same payload as `GET /apfel/status`, including recommended-version and live `/health` runtime fields.
+
 This is the main endpoint used by the Node-based `apfelclaw` command tool for `apfelclaw --status` when the backend is reachable.
 
 ## Config API
@@ -131,6 +133,11 @@ Returns a JSON object with fields such as:
 - `lastCheckedAt`
 - `lastError`
 - `maintenance`
+- `recommendedMinimumVersion`
+- `meetsRecommendedMinimum`
+- `runtime` (`reachable`, `status`, `modelAvailable`, `prewarmed`, `contextWindow`, `model`, `version`, `activeRequests`)
+
+`runtime` is parsed live from apfel's `GET /health`. A `context_window` of `0` is treated as unknown. `recommendedMinimumVersion` is `1.8.4`.
 
 The backend checks for updates in the background on startup and then periodically. Homebrew installs compare against the Homebrew formula feed, while non-Homebrew installs compare against the latest GitHub release.
 

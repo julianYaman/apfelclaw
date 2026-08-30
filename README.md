@@ -21,7 +21,7 @@ The repository is organized as a small monorepo:
 
 ## Status
 
-This project currently targets Apple Silicon Macs running macOS 26 Tahoe or newer. It depends on Apple platform APIs such as EventKit, Apple Mail, and Spotlight-backed file search, and it expects `apfel` to be installed locally for model execution.
+This project currently targets Apple Silicon Macs running macOS 26 Tahoe or newer. It depends on Apple platform APIs such as EventKit, Apple Mail, and Spotlight-backed file search, and it expects `apfel` 1.8.4 or newer to be installed locally for model execution.
 
 ## Install with Homebrew
 
@@ -38,9 +38,9 @@ The Homebrew formula can install the Node-based `apfelclaw` command tool, the se
 - Node.js 18+
 - Bun 1.0+ for local chat development or source builds
 - Swift 6.3+ for backend development or source builds
-- `apfel` installed and available on `PATH`
+- `apfel` 1.8.4 or newer installed and available on `PATH`
 
-apfelclaw inherits the same macOS baseline as `apfel`, because model execution is delegated to the local `apfel` server.
+apfelclaw inherits the same macOS baseline as `apfel`, because model execution is delegated to the local `apfel` server. `GET /status` and `/apfel status` report whether the installed binary meets that recommended minimum, plus live `/health` fields such as `prewarmed` and `contextWindow`.
 
 ## Run locally
 

@@ -15,7 +15,7 @@ Describe the problem clearly.
 - macOS version:
 - Swift version:
 - Bun version:
-- `apfel` version:
+- `apfel` version (1.8.4 or newer recommended):
 
 ## Steps to reproduce
 

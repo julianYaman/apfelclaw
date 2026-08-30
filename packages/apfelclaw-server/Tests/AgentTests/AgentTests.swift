@@ -32,6 +32,7 @@ func intentRouterPicksToolFromModelClassification() async throws {
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_recent_mail")
     #expect(decision.reasonCode == .freshPersonalData)
+    #expect(await model.recordedSchemaNames() == ["intent_classifier"])
 }
 
 @Test
@@ -563,6 +564,7 @@ func intentRouterRecoversFollowUpReuseFromPipeSeparatedReasonCode() async throws
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_recent_mail")
     #expect(decision.reasonCode == .sameDomainFollowUp)
+    #expect(await model.recordedSchemaNames() == ["intent_classifier", "intent_follow_up"])
 }
 
 @Test
@@ -821,13 +823,15 @@ func conversationServiceDoesNotSurfaceRawToolCallJSONToUser() async throws {
 private actor StubModelResponses {
     private var responses: [String]
     private var modes: [CompletionMode] = []
+    private var schemaNames: [String?] = []
 
     init(_ responses: [String]) {
         self.responses = responses
     }
 
-    func next(mode: CompletionMode) -> String? {
+    func next(mode: CompletionMode, schemaName: String?) -> String? {
         modes.append(mode)
+        schemaNames.append(schemaName)
         guard responses.isEmpty == false else {
             return nil
         }
@@ -836,6 +840,10 @@ private actor StubModelResponses {
 
     func recordedModes() -> [CompletionMode] {
         modes
+    }
+
+    func recordedSchemaNames() -> [String?] {
+        schemaNames
     }
 }
 
@@ -876,8 +884,8 @@ private final class StubModelClient: ModelCompleting, @unchecked Sendable {
         self.toolCall = toolCall
     }
 
-    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
-        if let text = await responses.next(mode: mode) {
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode, responseSchema: StructuredOutputSchema?) async throws -> CompletionOutcome {
+        if let text = await responses.next(mode: mode, schemaName: responseSchema?.name) {
             return CompletionOutcome(text: text, toolCall: toolCall)
         }
         return CompletionOutcome(text: nil, toolCall: toolCall)
@@ -885,6 +893,10 @@ private final class StubModelClient: ModelCompleting, @unchecked Sendable {
 
     func recordedModes() async -> [CompletionMode] {
         await responses.recordedModes()
+    }
+
+    func recordedSchemaNames() async -> [String?] {
+        await responses.recordedSchemaNames()
     }
 }
 
@@ -895,7 +907,7 @@ private final class SequenceModelClient: ModelCompleting, @unchecked Sendable {
         self.events = StubEventQueue(events)
     }
 
-    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode, responseSchema: StructuredOutputSchema?) async throws -> CompletionOutcome {
         switch await events.next(mode: mode) {
         case let .text(text):
             return CompletionOutcome(text: text, toolCall: nil)
@@ -914,7 +926,7 @@ private final class SequenceModelClient: ModelCompleting, @unchecked Sendable {
 }
 
 private struct PatternModelClient: ModelCompleting {
-    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode) async throws -> CompletionOutcome {
+    func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode, responseSchema: StructuredOutputSchema?) async throws -> CompletionOutcome {
         switch mode {
         case .structuredText:
             let system = messages.first?.content ?? ""

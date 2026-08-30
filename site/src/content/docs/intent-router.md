@@ -6,6 +6,8 @@ order: 6
 
 The Intent Router is the decision-making core of apfelclaw. On every user message, it determines whether to invoke a tool, answer directly, or ask for clarification. Rather than relying on keyword matching or hardcoded trigger phrases, it uses model-driven intent classification.
 
+Classifier and follow-up calls go to `apfel` with `response_format: json_schema` and `temperature: 0` (greedy). That constrains the small on-device model to one schema-valid JSON object instead of hoping the prompt alone produces parseable JSON. User-facing replies still use `temperature: 0.2` and a larger `max_tokens` budget.
+
 ## Overview
 
 The router runs up to **two stages**:
@@ -99,10 +101,10 @@ Reason codes are validated for consistency: `direct_answer_ok` is not allowed wh
 
 ## Retry mechanism
 
-Each stage tries **twice**:
+Each stage still tries **twice**, because a schema-valid object can still name the wrong tool or use a disallowed reason code:
 
-1. **Normal attempt** — standard prompt
-2. **Strict retry** — if the first attempt produces unparseable JSON or fails validation, the prompt is augmented with a notice: "Previous output was invalid. Retry and return exactly one JSON object matching the schema."
+1. **Normal attempt** — guided `json_schema` generation
+2. **Strict retry** — if the first attempt is empty, unparseable, or fails validation, the prompt is augmented with a notice: "Previous output was invalid. Retry and return exactly one JSON object matching the schema."
 
 This means the router makes up to 4 model calls in the worst case (2 per stage). In practice, Stage 1 resolves most messages on the first attempt.
 

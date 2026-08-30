@@ -6,7 +6,7 @@ public enum RoutingAction: String, Codable, Sendable {
     case clarify = "clarify"
 }
 
-public enum RoutingReasonCode: String, Codable, Sendable {
+public enum RoutingReasonCode: String, Codable, Sendable, CaseIterable {
     case freshPersonalData = "fresh_personal_data"
     case sameDomainFollowUp = "same_domain_follow_up"
     case priorResultInsufficient = "prior_result_insufficient"
@@ -447,7 +447,8 @@ public enum IntentRouter {
                 outcome = try await modelClient.complete(
                     messages: classifierMessages,
                     tools: [],
-                    mode: .structuredText
+                    mode: .structuredText,
+                    responseSchema: classifierOutputSchema
                 )
             } catch {
                 debugAttempts.append(RoutingDebugAttempt(stage: "classifier", strict: strict, status: "model_error", output: sanitizeDebugText(error.localizedDescription)))
@@ -503,7 +504,8 @@ public enum IntentRouter {
                 outcome = try await modelClient.complete(
                     messages: verificationMessages,
                     tools: [],
-                    mode: .structuredText
+                    mode: .structuredText,
+                    responseSchema: followUpOutputSchema
                 )
             } catch {
                 debugAttempts.append(RoutingDebugAttempt(stage: "follow_up", strict: strict, status: "model_error", output: sanitizeDebugText(error.localizedDescription)))
@@ -723,5 +725,49 @@ public enum IntentRouter {
             return "null"
         }
         return rendered
+    }
+
+    static let classifierOutputSchema = StructuredOutputSchema(
+        name: "intent_classifier",
+        schema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "action": stringEnum(["use_tool", "answer_directly"]),
+                "toolName": .object([
+                    "anyOf": .array([
+                        .object(["type": .string("string")]),
+                        .object(["type": .string("null")]),
+                    ]),
+                ]),
+                "reasonCode": stringEnum(RoutingReasonCode.allCases.map(\.rawValue)),
+            ]),
+            "required": .array([
+                .string("action"),
+                .string("toolName"),
+                .string("reasonCode"),
+            ]),
+        ])
+    )
+
+    static let followUpOutputSchema = StructuredOutputSchema(
+        name: "intent_follow_up",
+        schema: .object([
+            "type": .string("object"),
+            "properties": .object([
+                "reuseLastTool": .object(["type": .string("boolean")]),
+                "reasonCode": stringEnum(RoutingReasonCode.allCases.map(\.rawValue)),
+            ]),
+            "required": .array([
+                .string("reuseLastTool"),
+                .string("reasonCode"),
+            ]),
+        ])
+    )
+
+    private static func stringEnum(_ values: [String]) -> JSONValue {
+        .object([
+            "type": .string("string"),
+            "enum": .array(values.map(JSONValue.string)),
+        ])
     }
 }

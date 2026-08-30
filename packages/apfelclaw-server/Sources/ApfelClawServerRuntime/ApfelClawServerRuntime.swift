@@ -14,6 +14,7 @@ extension RemoteControlStatus: Content {}
 extension TelegramRemoteControlStatus: Content {}
 extension TelegramRemoteControlSetupRequest: Content {}
 extension ApfelMaintenanceState: Content {}
+extension ApfelRuntimeHealth: Content {}
 extension ApfelStatusResponse: Content {}
 extension ApfelActionResponse: Content {}
 extension ServerStatusResponse: Content {}

@@ -11,6 +11,7 @@ public final class ApfelManager: @unchecked Sendable {
     private var process: Process?
     private let baseURL = URL(string: "http://127.0.0.1:11434")!
     private let lock = NSLock()
+    private let startupTimeout: TimeInterval = 45
 
     public init(config: AppConfig) {
         self.config = config
@@ -29,7 +30,7 @@ public final class ApfelManager: @unchecked Sendable {
 
         try startServer(executablePath: executable)
 
-        let deadline = Date().addingTimeInterval(15)
+                let deadline = Date().addingTimeInterval(startupTimeout)
         while Date() < deadline {
             if await isHealthy() {
                 return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: true)
@@ -63,17 +64,21 @@ public final class ApfelManager: @unchecked Sendable {
     }
 
     public func isHealthy() async -> Bool {
+        await runtimeHealth().reachable
+    }
+
+    public func runtimeHealth() async -> ApfelRuntimeHealth {
         var request = URLRequest(url: baseURL.appendingPathComponent("health"))
-        request.timeoutInterval = 1.0
+        request.timeoutInterval = 3.0
 
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                return false
+                return .unreachable
             }
-            return (200 ..< 300).contains(http.statusCode)
+            return ApfelRuntimeHealth.parse(data: data, httpStatusCode: http.statusCode)
         } catch {
-            return false
+            return .unreachable
         }
     }
 
@@ -118,7 +123,7 @@ public final class ApfelManager: @unchecked Sendable {
         shutdownIfOwned()
         try startServer(executablePath: executable)
 
-        let deadline = Date().addingTimeInterval(15)
+                let deadline = Date().addingTimeInterval(startupTimeout)
         while Date() < deadline {
             if await isHealthy() {
                 return ApfelStatus(executablePath: executable, isRunning: true, wasStartedByApp: true)

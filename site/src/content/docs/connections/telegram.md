@@ -93,6 +93,7 @@ The backend owns the Telegram poller. That means:
 ## Update and maintenance notes
 
 - apfelclaw checks in the background whether your installed `apfel` version is current
+- `/apfel status` also reports live runtime health (`prewarmed`, `contextWindow`) and whether the install meets the recommended 1.8.4 minimum
 - Homebrew installs are compared against the Homebrew formula version, not just the GitHub release feed
 - Upgrade and restart actions are explicit and require a second confirmation command in Telegram
 - Restarting or upgrading `apfel` briefly interrupts model requests while the backend waits for `apfel` to become healthy again

@@ -19,7 +19,7 @@ Thanks for contributing to apfelclaw. The project is still compact, so the goal 
 - macOS 26 Tahoe or newer
 - Swift 6.3+
 - Bun 1.0+
-- `apfel` installed and available on `PATH`
+- `apfel` 1.8.4 or newer installed and available on `PATH`
 
 Install dependencies and run the main development flows from the repository root:
 

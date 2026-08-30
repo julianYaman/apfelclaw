@@ -236,6 +236,12 @@ async function printStatus() {
       ['apfelCanUpgrade', String(Boolean(liveStatus.apfel?.canUpgrade))],
       ['apfelCanRestart', String(Boolean(liveStatus.apfel?.canRestart))],
       ['apfelRestartMode', liveStatus.apfel?.restartMode ?? 'unknown'],
+      ['apfelRecommendedMinimum', liveStatus.apfel?.recommendedMinimumVersion ?? '1.8.4'],
+      ['apfelMeetsRecommendedMinimum', liveStatus.apfel?.meetsRecommendedMinimum == null ? 'unknown' : String(liveStatus.apfel.meetsRecommendedMinimum)],
+      ['apfelReachable', liveStatus.apfel?.runtime?.reachable == null ? 'unknown' : String(liveStatus.apfel.runtime.reachable)],
+      ['apfelPrewarmed', liveStatus.apfel?.runtime?.prewarmed == null ? 'unknown' : String(liveStatus.apfel.runtime.prewarmed)],
+      ['apfelContextWindow', liveStatus.apfel?.runtime?.contextWindow == null ? 'unknown' : String(liveStatus.apfel.runtime.contextWindow)],
+      ['apfelModelAvailable', liveStatus.apfel?.runtime?.modelAvailable == null ? 'unknown' : String(liveStatus.apfel.runtime.modelAvailable)],
       ['apfelLastError', liveStatus.apfel?.lastError ?? 'none'],
     )
   } else {
@@ -254,6 +260,12 @@ async function printStatus() {
       ['apfelCanUpgrade', 'unavailable while backend is down'],
       ['apfelCanRestart', 'unavailable while backend is down'],
       ['apfelRestartMode', 'unavailable while backend is down'],
+      ['apfelRecommendedMinimum', 'unavailable while backend is down'],
+      ['apfelMeetsRecommendedMinimum', 'unavailable while backend is down'],
+      ['apfelReachable', 'unavailable while backend is down'],
+      ['apfelPrewarmed', 'unavailable while backend is down'],
+      ['apfelContextWindow', 'unavailable while backend is down'],
+      ['apfelModelAvailable', 'unavailable while backend is down'],
       ['apfelLastError', 'unavailable while backend is down'],
     )
   }
