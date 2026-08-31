@@ -1,118 +1,83 @@
 ---
 title: Intent Router
-description: How apfelclaw decides when to use a tool — the 2-stage, model-driven routing flow.
+description: How apfelclaw decides when to use a tool — a single-stage, model-driven classifier.
 order: 6
 ---
 
-The Intent Router is the decision-making core of apfelclaw. On every user message, it determines whether to invoke a tool, answer directly, or ask for clarification. Rather than relying on keyword matching or hardcoded trigger phrases, it uses model-driven intent classification.
+The Intent Router is the decision-making core of apfelclaw. On every user message, it chooses exactly one tool name or decides to answer without a tool. Rather than relying on keyword matching or hardcoded trigger phrases, it uses model-driven intent classification.
 
-Classifier and follow-up calls go to `apfel` with `response_format: json_schema` and `temperature: 0` (greedy). That constrains the small on-device model to one schema-valid JSON object instead of hoping the prompt alone produces parseable JSON. User-facing replies still use `temperature: 0.2` and a larger `max_tokens` budget.
+Classifier calls go to `apfel` with `response_format: json_schema` and `temperature: 0` (greedy). The schema enumerates the live tool catalog, which constrains the small on-device model to one allowed tool name or `null`. User-facing replies still use `temperature: 0.2` and a larger `max_tokens` budget.
 
 ## Overview
 
-The router runs up to **two stages**:
-
-1. Classify the message
-2. Reuse the previous tool when the user is continuing a tool-backed request
-
-If the router cannot make a reliable decision, it now asks for clarification instead of guessing.
+The router runs **one classification stage**. If that output is empty, unparseable, or names a tool that is not registered, it retries once. If both attempts fail, it asks for clarification instead of guessing.
 
 ```
 User message
     │
     ▼
 ┌─────────────────────┐
-│  Stage 1: Classify   │──── tool selected? ──▶ Done (use tool)
+│  Classify            │──── valid tool name ──▶ Done (use tool)
 └─────────────────────┘
-    │ no
-    ▼
-┌─────────────────────┐
-│  Stage 2: Follow-up  │──── reuse tool? ─────▶ Done (use tool)
-│  reuse check         │
-└─────────────────────┘
-    │ no or uncertain
-    ▼
-  Ask for clarification
+    │
+    ├── toolName is null ──▶ Answer directly
+    │
+    └── invalid after retry ──▶ Ask for clarification
 ```
 
-## Stage 1: Classifier
+Argument filling, approval, execution, and result formatting happen after this decision. The router never emits tool arguments.
 
-The first stage asks the model to choose between `use_tool` (with a specific tool name) or `answer_directly`.
+## Classifier
+
+The classifier asks the model for a single field:
+
+```json
+{ "toolName": "list_calendar_events" }
+```
+
+or, when no tool is needed:
+
+```json
+{ "toolName": null }
+```
 
 The model receives:
 
 - A system prompt listing all registered tools with their **domain**, **purpose**, **use_when**, **avoid_when**, **examples**, and **returns**
 - The current **reference date and timezone** with explicit labels ("Today means 2026-04-07", "Tomorrow means 2026-04-08")
-- A summary of the **last tool call** (if any), including its scope snapshot
+- A summary of the **last tool call** (if any), including its scope snapshot and whether follow-up reuse is allowed
 - The **last 4 messages** of conversation context
+- A compact rolling **session summary** when memory is enabled
 - The latest **user message**
-
-The model returns a JSON object:
-
-```json
-{
-  "action": "use_tool",
-  "toolName": "list_calendar_events",
-  "reasonCode": "fresh_personal_data"
-}
-```
 
 The same stage also routes calendar write requests. For example, a message like "Add my weekly sync meeting for today at 14:00 to my calendar" should select `add_calendar_event`.
 
-If the model selects a valid tool, routing is complete. If it selects `answer_directly`, the router normally keeps that decision unless Stage 2 recovers a tool-backed follow-up.
+Follow-ups are classified in this same pass. If the previous calendar lookup covered today and the user says "what about tomorrow?", the last-tool snapshot and a few follow-up examples are enough for the model to select `list_calendar_events` again.
 
-## Stage 2: Follow-up reuse
+## Follow-up reuse
 
-This stage only runs when two conditions are met:
+Follow-up reuse is prompt context, not a second model call. When a recent approved tool call exists, the classifier sees:
 
-1. Stage 1 did **not** select a tool
-2. There is a recent approved tool call whose module has **`supportsFollowUpReuse`** enabled
+- **toolName** and **domain**
+- **followUpReuse** — `yes` for read-only lookups that can be repeated with a changed scope; `no` for write tools and other tools that should not be repeated from a vague follow-up
+- A **scope snapshot** of what the previous result covered
 
-Currently, `list_calendar_events` (calendar domain) and `list_recent_mail` (mail domain) support follow-up reuse. `add_calendar_event` does not, because reusing write-capable tools is riskier than reusing read-only lookups. File and terminal tools do not.
+Currently, `list_calendar_events`, `list_recent_mail`, and `get_mac_status` allow follow-up reuse. `add_calendar_event` does not, because reusing write-capable tools is riskier than reusing read-only lookups. File and terminal tools do not.
 
-The model is asked: "Is the user continuing the previous tool-backed request in the same domain?" It receives the prior tool's scope snapshot so it can compare what was previously covered with what the user is now asking.
-
-For example, if the user previously asked "What meetings do I have today?" and now asks "What about tomorrow?", the model can recognize this as a follow-up in the calendar domain and reuse the calendar tool.
-
-The model returns:
-
-```json
-{
-  "reuseLastTool": true,
-  "reasonCode": "same_domain_follow_up"
-}
-```
-
-If `reuseLastTool` is true, the routing decision becomes `use_tool` with the previous tool name.
-
-## Reason codes
-
-Every routing decision includes a reason code explaining why the decision was made:
-
-| Code | Meaning |
-|---|---|
-| `fresh_personal_data` | User wants live local/personal data or a local personal action such as creating a calendar event |
-| `same_domain_follow_up` | User is continuing a conversation in the same tool domain with changed scope |
-| `prior_result_insufficient` | The previous tool result didn't cover what the user is now asking |
-| `direct_answer_ok` | Pure chat, greeting, or stable knowledge — no tool needed |
-| `other` | Catch-all fallback |
-
-Reason codes are validated for consistency: `direct_answer_ok` is not allowed when the action is `use_tool`, and only `direct_answer_ok` or `other` are valid when answering directly.
+The classifier is instructed to pick the same tool again only when that last tool allows follow-up reuse and the user is asking for a changed or fresh scope of the same lookup. A write-tool follow-up such as "add a dentist appointment at 3pm" after a calendar listing should select `add_calendar_event`, not reuse the list tool.
 
 ## Retry mechanism
 
-Each stage still tries **twice**, because a schema-valid object can still name the wrong tool or use a disallowed reason code:
+The classifier tries **twice**, because a schema-valid object can still name an unknown tool:
 
 1. **Normal attempt** — guided `json_schema` generation
-2. **Strict retry** — if the first attempt is empty, unparseable, or fails validation, the prompt is augmented with a notice: "Previous output was invalid. Retry and return exactly one JSON object matching the schema."
+2. **Strict retry** — if the first attempt is empty, unparseable, or names a tool that is not registered, the prompt is augmented with: "Previous output was invalid. Retry and return exactly one JSON object matching the schema."
 
-This means the router makes up to 4 model calls in the worst case (2 per stage). In practice, Stage 1 resolves most messages on the first attempt.
-
-If both attempts in a stage fail, the stage returns no result and control falls through to the next stage or clarification.
+If both attempts fail, the router asks for clarification rather than guessing. A valid `null` tool name is trusted in one pass, including after an earlier tool-backed turn.
 
 ## Context assembly
 
-Each stage builds its prompt from several sources:
+The classifier prompt is built from several sources:
 
 ### Tool registry
 
@@ -123,6 +88,8 @@ The router reads from each tool module's routing metadata:
 - **use_when / avoid_when** — guidance for the model
 - **examples** — natural-language trigger phrases
 - **returns** — what the tool's output contains
+
+The JSON schema's `toolName` enum is generated from the same registry, so the model cannot name a tool that is not loaded.
 
 ### Last tool call summary
 
@@ -145,9 +112,9 @@ An explicit time reference with timezone, including resolved "Today means..." an
 
 ## Debug tracing
 
-When `debug` is enabled in the config, every model call across all stages is recorded as a debug attempt with:
+When `debug` is enabled in the config, every classifier attempt is recorded with:
 
-- **stage** — which stage (`classifier`, `follow_up`)
+- **stage** — `classifier`
 - **strict** — whether this was a retry attempt
 - **status** — outcome (`accepted`, `empty_response`, `invalid_json`, `invalid_selection`, `model_error`)
 - **output** — the sanitized raw model output
@@ -159,7 +126,8 @@ All attempts are accumulated and serialized as a JSON array attached to the fina
 The Intent Router follows the project's core guidelines:
 
 - **No keyword matching** — routing decisions are made by the model, not by scanning for trigger words. If routing needs improvement, the fix is to improve prompts, tool schemas, and context rather than adding hardcoded patterns.
+- **Narrow task** — the model returns one field. It does not justify the choice with reason codes, and it does not fill tool arguments.
 - **Local-first** — all classification happens on-device via `apfel`. No network calls are made for routing.
-- **Graceful degradation** — if the model fails to produce valid output across all retries and stages, the router asks for clarification rather than guessing.
+- **Graceful degradation** — if the model fails to produce valid output across both attempts, the router asks for clarification rather than guessing.
 
 For calendar creation specifically, the router only chooses the tool. The later tool-call stage is still responsible for asking a short clarification question when timing or duration details are missing.

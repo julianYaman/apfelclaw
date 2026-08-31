@@ -89,7 +89,7 @@ Read upcoming events from the user's calendars via EventKit.
 - "Show my schedule for tomorrow"
 - "Any events this week?"
 
-> This tool supports **follow-up reuse**: if the user asks about "today" and then follows up with "what about tomorrow?", the Intent Router can reuse this tool without re-classifying from scratch.
+> This tool supports **follow-up reuse**: if the user asks about "today" and then follows up with "what about tomorrow?", the classifier sees the last calendar snapshot and can select this tool again.
 
 ---
 
@@ -157,7 +157,7 @@ Read current status information from this Mac.
 - "What's my Mac status?"
 - "How much free disk space do I have?"
 
-> This tool supports **follow-up reuse**: if the user first asks for an overview and then follows up with a narrower system-health question, the router can reuse this tool.
+> This tool supports **follow-up reuse**: if the user first asks for an overview and then follows up with a narrower system-health question, the classifier can select this tool again.
 
 ---
 
@@ -221,7 +221,7 @@ Read recent messages from the Apple Mail inbox.
 - "Any new mail?"
 - "Show me the last 3 emails"
 
-> This tool supports **follow-up reuse**: if the user asks "any new mail?" and then follows up with "show me more", the router can reuse this tool.
+> This tool supports **follow-up reuse**: if the user asks "any new mail?" and then follows up with "show me more", the classifier can select this tool again.
 
 ---
 
@@ -238,7 +238,7 @@ After execution, each tool can produce a `ToolResultSnapshot` — a structured s
 - **scopeSummary**: A human-readable description (e.g., "Previous calendar lookup covered today (2026-04-07) and returned 3 event(s).")
 - **machineReadableScope**: A JSON object the router uses to compare previous vs. requested scope
 
-These snapshots are injected into the [Intent Router's](/docs/intent-router) context for subsequent turns, helping it decide whether to reuse a tool or pick a different one.
+These snapshots are injected into the [Intent Router's](/docs/intent-router) classifier context for subsequent turns, so it can decide whether to select the same tool again or pick a different one.
 
 ### Deterministic fallback
 
