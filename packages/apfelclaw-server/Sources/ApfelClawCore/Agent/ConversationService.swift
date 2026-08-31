@@ -105,7 +105,7 @@ public final class ConversationService: @unchecked Sendable {
         if config.debug {
             let renderedTool = routing.toolName ?? "(none)"
             let debugTrace = routing.debugTrace ?? "null"
-            print("[debug][intent_router] input=\"\(trimmed)\" action=\(routing.action.rawValue) tool=\(renderedTool) reason_code=\(routing.reasonCode.rawValue) trace=\(debugTrace)")
+            print("[debug][intent_router] input=\"\(trimmed)\" action=\(routing.action.rawValue) tool=\(renderedTool) trace=\(debugTrace)")
         }
 
         if routing.action == .useTool,

@@ -15,7 +15,7 @@ func approvalModeLabelsExist() {
 func intentRouterPicksToolFromModelClassification() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"use_tool","toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}"#]
+        responses: [#"{"toolName":"list_recent_mail"}"#]
     )
 
     let decision = try await IntentRouter.route(
@@ -31,7 +31,6 @@ func intentRouterPicksToolFromModelClassification() async throws {
 
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_recent_mail")
-    #expect(decision.reasonCode == .freshPersonalData)
     #expect(await model.recordedSchemaNames() == ["intent_classifier"])
 }
 
@@ -39,7 +38,7 @@ func intentRouterPicksToolFromModelClassification() async throws {
 func intentRouterPicksCalendarCreateToolFromModelClassification() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#]
+        responses: [#"{"toolName":"add_calendar_event"}"#]
     )
 
     let decision = try await IntentRouter.route(
@@ -55,17 +54,13 @@ func intentRouterPicksCalendarCreateToolFromModelClassification() async throws {
 
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "add_calendar_event")
-    #expect(decision.reasonCode == .freshPersonalData)
 }
 
 @Test
 func intentRouterFallsBackToDirectAnswerWhenClassifierSaysNoTool() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"toolName":null,"reasonCode":"direct_answer_ok"}"#,
-        ]
+        responses: [#"{"toolName":null}"#]
     )
 
     let decision = try await IntentRouter.route(
@@ -81,14 +76,13 @@ func intentRouterFallsBackToDirectAnswerWhenClassifierSaysNoTool() async throws 
 
     #expect(decision.action == .answerDirectly)
     #expect(decision.toolName == nil)
-    #expect(decision.reasonCode == .directAnswerOK)
 }
 
 @Test
 func intentRouterReusesCalendarToolForShortFollowUp() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"use_tool","toolName":"list_calendar_events","reasonCode":"same_domain_follow_up"}"#]
+        responses: [#"{"toolName":"list_calendar_events"}"#]
     )
     let lastToolCall = ToolCallRecord(
         toolName: "list_calendar_events",
@@ -113,7 +107,7 @@ func intentRouterReusesCalendarToolForShortFollowUp() async throws {
 
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_calendar_events")
-    #expect(decision.reasonCode == .sameDomainFollowUp)
+    #expect(await model.recordedModes() == [.structuredText])
 }
 
 @Test
@@ -141,14 +135,14 @@ func classifierPromptIncludesCompactRoutingContext() throws {
 
     #expect(messages.count == 2)
     #expect(messages[0].content?.contains("You are not the assistant. You are the router for apfelclaw.") == true)
-    #expect(messages[0].content?.contains("Allowed action values: use_tool, answer_directly") == true)
-    #expect(messages[0].content?.contains("Allowed reasonCode values: fresh_personal_data, same_domain_follow_up, prior_result_insufficient, direct_answer_ok, other") == true)
-    #expect(messages[0].content?.contains("Small-model rule:") == true)
-    #expect(messages[0].content?.contains(#"- "Hello." -> {"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#) == true)
-    #expect(messages[0].content?.contains("When in doubt between answer_directly and use_tool") == true)
+    #expect(messages[0].content?.contains(#"{"toolName":"<one allowed tool name or null>"}"#) == true)
+    #expect(messages[0].content?.contains(#"- "Hello." -> {"toolName":null}"#) == true)
+    #expect(messages[0].content?.contains(#"Previous calendar lookup covered today, user says "And for tomorrow?" -> {"toolName":"list_calendar_events"}"#) == true)
+    #expect(messages[0].content?.contains("When in doubt for local, personal, current, or changing data, choose a tool.") == true)
     #expect(messages[0].content?.contains("Never emit function calls or tool_calls.") == true)
     #expect(messages[0].content?.contains("domain: calendar") == true)
     #expect(messages[1].content?.contains("toolName: list_calendar_events") == true)
+    #expect(messages[1].content?.contains("followUpReuse: yes") == true)
     #expect(messages[1].content?.contains("scopeSummary: Previous calendar lookup covered today") == true)
     #expect(messages[1].content?.contains(#""timeframe":"today""#) == true)
     #expect(messages[1].content?.contains("Session summary:") == true)
@@ -189,8 +183,7 @@ func classifierPromptIncludesFinalCheckRuleForLatestUserMessage() throws {
         timeZone: routerTimeZone
     )
 
-    #expect(messages[0].content?.contains("Final-check rule:") == true)
-    #expect(messages[0].content?.contains("latest user message on its own clearly asks to read personal, local, or current data") == true)
+    #expect(messages[0].content?.contains("If the latest user message on its own clearly asks to read or change personal, local, or current data") == true)
 }
 
 @Test
@@ -370,13 +363,10 @@ func modelClientExtractsCalendarCreateToolCallWhenArgumentsAreJSONObjects() {
 }
 
 @Test
-func intentRouterRecoversToolUseWhenPriorToolDidNotCoverNewScope() async throws {
+func intentRouterTrustsDirectAnswerWhenLastReusableToolExists() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"reuseLastTool":true,"reasonCode":"prior_result_insufficient"}"#
-        ]
+        responses: [#"{"toolName":null}"#]
     )
     let lastToolCall = ToolCallRecord(
         toolName: "list_calendar_events",
@@ -390,7 +380,7 @@ func intentRouterRecoversToolUseWhenPriorToolDidNotCoverNewScope() async throws 
             ("user", "What are my events for today?"),
             ("assistant", "You have no calendar event(s) for today."),
         ],
-        userInput: "And for tomorrow?",
+        userInput: "Thanks!",
         sessionSummary: nil,
         lastToolCall: lastToolCall,
         toolRegistry: runtime.registry,
@@ -399,9 +389,10 @@ func intentRouterRecoversToolUseWhenPriorToolDidNotCoverNewScope() async throws 
         timeZone: routerTimeZone
     )
 
-    #expect(decision.action == .useTool)
-    #expect(decision.toolName == "list_calendar_events")
-    #expect(decision.reasonCode == .priorResultInsufficient)
+    #expect(decision.action == .answerDirectly)
+    #expect(decision.toolName == nil)
+    #expect(await model.recordedModes() == [.structuredText])
+    #expect(await model.recordedSchemaNames() == ["intent_classifier"])
 }
 
 @Test
@@ -410,7 +401,7 @@ func intentRouterRetriesInvalidClassifierOutputBeforeFallingBack() async throws 
     let model = StubModelClient(
         responses: [
             #"{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"list_recent_mail","arguments":"{}"}}]}"#,
-            #"{"action":"use_tool","toolName":"list_recent_mail","reasonCode":"fresh_personal_data"}"#,
+            #"{"toolName":"list_recent_mail"}"#,
         ]
     )
 
@@ -427,7 +418,6 @@ func intentRouterRetriesInvalidClassifierOutputBeforeFallingBack() async throws 
 
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_recent_mail")
-    #expect(decision.reasonCode == .freshPersonalData)
     #expect(decision.debugTrace?.contains(#""stage":"classifier""#) == true)
     #expect(decision.debugTrace?.contains(#""status":"invalid_json""#) == true)
     #expect(decision.debugTrace?.contains(#""status":"accepted""#) == true)
@@ -435,12 +425,12 @@ func intentRouterRetriesInvalidClassifierOutputBeforeFallingBack() async throws 
 }
 
 @Test
-func intentRouterRejectsAnswerDirectlyWithFollowUpReasonCode() async throws {
+func intentRouterRetriesWhenToolNameIsUnknown() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
         responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"same_domain_follow_up"}"#,
-            #"{"action":"use_tool","toolName":"list_calendar_events","reasonCode":"fresh_personal_data"}"#,
+            #"{"toolName":"not_a_real_tool"}"#,
+            #"{"toolName":"list_calendar_events"}"#,
         ]
     )
 
@@ -457,7 +447,7 @@ func intentRouterRejectsAnswerDirectlyWithFollowUpReasonCode() async throws {
 
     #expect(decision.action == .useTool)
     #expect(decision.toolName == "list_calendar_events")
-    #expect(decision.reasonCode == .freshPersonalData)
+    #expect(decision.debugTrace?.contains(#""status":"invalid_selection""#) == true)
     #expect(await model.recordedModes() == [.structuredText, .structuredText])
 }
 
@@ -465,7 +455,7 @@ func intentRouterRejectsAnswerDirectlyWithFollowUpReasonCode() async throws {
 func intentRouterKeepsAcceptedDirectAnswerInOnePass() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#]
+        responses: [#"{"toolName":null}"#]
     )
 
     let decision = try await IntentRouter.route(
@@ -481,7 +471,6 @@ func intentRouterKeepsAcceptedDirectAnswerInOnePass() async throws {
 
     #expect(decision.action == .answerDirectly)
     #expect(decision.toolName == nil)
-    #expect(decision.reasonCode == .directAnswerOK)
     #expect(await model.recordedModes() == [.structuredText])
 }
 
@@ -489,7 +478,7 @@ func intentRouterKeepsAcceptedDirectAnswerInOnePass() async throws {
 func intentRouterKeepsGreetingAsDirectAnswerWithoutExtraVerification() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(
-        responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#]
+        responses: [#"{"toolName":null}"#]
     )
 
     let decision = try await IntentRouter.route(
@@ -505,70 +494,11 @@ func intentRouterKeepsGreetingAsDirectAnswerWithoutExtraVerification() async thr
 
     #expect(decision.action == .answerDirectly)
     #expect(decision.toolName == nil)
-    #expect(decision.reasonCode == .directAnswerOK)
     #expect(await model.recordedModes() == [.structuredText])
 }
 
 @Test
-func intentRouterKeepsGreetingAsDirectAnswerWhenClassifierSaysSo() async throws {
-    let runtime = try ToolRuntime()
-    let model = StubModelClient(responses: [#"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#])
-
-    let decision = try await IntentRouter.route(
-        messages: [("user", "Hello.")],
-        userInput: "Hello.",
-        sessionSummary: nil,
-        lastToolCall: nil,
-        toolRegistry: runtime.registry,
-        modelClient: model,
-        referenceDate: routerReferenceDate,
-        timeZone: routerTimeZone
-    )
-
-    #expect(decision.action == .answerDirectly)
-    #expect(decision.toolName == nil)
-    #expect(decision.reasonCode == .directAnswerOK)
-    #expect(await model.recordedModes() == [.structuredText])
-}
-
-@Test
-func intentRouterRecoversFollowUpReuseFromPipeSeparatedReasonCode() async throws {
-    let runtime = try ToolRuntime()
-    let model = StubModelClient(
-        responses: [
-            #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#,
-            #"{"reuseLastTool":true,"reasonCode":"same_domain_follow_up|prior_result_insufficient"}"#,
-        ]
-    )
-    let lastToolCall = ToolCallRecord(
-        toolName: "list_recent_mail",
-        approved: true,
-        payload: #"{"arguments":"{}","result":"{\"mailbox\":\"All Inboxes\",\"requested_limit\":5,\"returned_count\":2,\"results\":[]}"}"#,
-        createdAt: "2026-04-07T10:00:00Z"
-    )
-
-    let decision = try await IntentRouter.route(
-        messages: [
-            ("user", "Show me my recent emails."),
-            ("assistant", "Your recent 5 mails:")
-        ],
-        userInput: "Can you try again?",
-        sessionSummary: nil,
-        lastToolCall: lastToolCall,
-        toolRegistry: runtime.registry,
-        modelClient: model,
-        referenceDate: routerReferenceDate,
-        timeZone: routerTimeZone
-    )
-
-    #expect(decision.action == .useTool)
-    #expect(decision.toolName == "list_recent_mail")
-    #expect(decision.reasonCode == .sameDomainFollowUp)
-    #expect(await model.recordedSchemaNames() == ["intent_classifier", "intent_follow_up"])
-}
-
-@Test
-func intentRouterUsesOtherReasonWhenClassifierRemainsInvalid() async throws {
+func intentRouterAsksForClarificationWhenClassifierRemainsInvalid() async throws {
     let runtime = try ToolRuntime()
     let model = StubModelClient(responses: ["not json", "still not json"])
 
@@ -585,12 +515,11 @@ func intentRouterUsesOtherReasonWhenClassifierRemainsInvalid() async throws {
 
     #expect(decision.action == .clarify)
     #expect(decision.toolName == nil)
-    #expect(decision.reasonCode == .other)
     #expect(await model.recordedModes() == [.structuredText, .structuredText])
 }
 
 @Test
-func followUpVerifierDoesNotReuseMailWhenDomainSwitches() throws {
+func classifierPromptIncludesLastToolWhenUserMayHaveSwitchedDomains() throws {
     let runtime = try ToolRuntime()
     let lastToolCall = ToolCallRecord(
         toolName: "list_recent_mail",
@@ -599,7 +528,7 @@ func followUpVerifierDoesNotReuseMailWhenDomainSwitches() throws {
         createdAt: "2026-04-07T10:00:00Z"
     )
 
-    let messages = IntentRouter.buildFollowUpVerificationMessages(
+    let messages = IntentRouter.buildClassifierMessages(
         messages: [
             ("user", "Show my latest emails."),
             ("assistant", "Your recent mail:")
@@ -612,10 +541,26 @@ func followUpVerifierDoesNotReuseMailWhenDomainSwitches() throws {
         timeZone: routerTimeZone
     )
 
-    #expect(messages[0].content?.contains("You are checking whether the user's latest message continues the previous tool-backed request.") == true)
+    #expect(messages[0].content?.contains("find_files") == true)
     #expect(messages[1].content?.contains("toolName: list_recent_mail") == true)
     #expect(messages[1].content?.contains("Previous mail lookup returned") == true)
     #expect(messages[1].content?.contains("Session summary:") == true)
+}
+
+@Test
+func classifierOutputSchemaEnumeratesAllowedToolNames() throws {
+    let schema = IntentRouter.classifierOutputSchema(allowedToolNames: ["list_recent_mail", "list_calendar_events"])
+    let encoded = try JSONEncoder().encode(schema.schema)
+    let json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+    let properties = json?["properties"] as? [String: Any]
+    let toolName = properties?["toolName"] as? [String: Any]
+    let anyOf = toolName?["anyOf"] as? [[String: Any]]
+    let enumerated = anyOf?.first { $0["type"] as? String == "string" }
+    let names = enumerated?["enum"] as? [String]
+
+    #expect(schema.name == "intent_classifier")
+    #expect(names == ["list_recent_mail", "list_calendar_events"])
+    #expect(anyOf?.contains { $0["type"] as? String == "null" } == true)
 }
 
 @Test
@@ -651,7 +596,7 @@ func conversationServiceRespectsApprovalModeByDefault() async throws {
     ))
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"get_mac_status","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"get_mac_status"}"#),
             .toolCall(ToolCall(id: "call_1", name: "get_mac_status", argumentsJSON: "{}")),
         ])
     )
@@ -693,7 +638,7 @@ func conversationServiceTurnsInvalidCalendarCreateTimingIntoClarification() asyn
     let harness = try ConversationTestHarness(defaults: .default)
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"add_calendar_event"}"#),
             .toolCall(ToolCall(
                 id: "call_1",
                 name: "add_calendar_event",
@@ -718,7 +663,7 @@ func conversationServiceRepairsInvalidCalendarCreateToolCallBeforeClarifying() a
     let harness = try ConversationTestHarness(defaults: .default)
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"add_calendar_event"}"#),
             .toolCall(ToolCall(
                 id: "call_1",
                 name: "add_calendar_event",
@@ -748,7 +693,7 @@ func conversationServiceUsesToolSpecificClarificationWhenInvalidCalendarCreateRe
     let harness = try ConversationTestHarness(defaults: .default)
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"add_calendar_event"}"#),
             .toolCall(ToolCall(
                 id: "call_1",
                 name: "add_calendar_event",
@@ -772,7 +717,7 @@ func conversationServiceRepairsMalformedCalendarToolPayloadIntoClarificationText
     let harness = try ConversationTestHarness(defaults: .default)
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"add_calendar_event"}"#),
             .text(
                 """
                 ```json
@@ -799,7 +744,7 @@ func conversationServiceDoesNotSurfaceRawToolCallJSONToUser() async throws {
     let harness = try ConversationTestHarness(defaults: .default)
     let conversationService = try harness.makeConversationService(
         modelClient: SequenceModelClient(events: [
-            .text(#"{"action":"use_tool","toolName":"add_calendar_event","reasonCode":"fresh_personal_data"}"#),
+            .text(#"{"toolName":"add_calendar_event"}"#),
             .text(
                 """
                 ```json
@@ -929,11 +874,7 @@ private struct PatternModelClient: ModelCompleting {
     func complete(messages: [ChatMessage], tools: [ToolDefinition], mode: CompletionMode, responseSchema: StructuredOutputSchema?) async throws -> CompletionOutcome {
         switch mode {
         case .structuredText:
-            let system = messages.first?.content ?? ""
-            if system.contains("verifying whether the router's current answer_directly choice") {
-                return CompletionOutcome(text: #"{"toolName":null,"reasonCode":"direct_answer_ok"}"#, toolCall: nil)
-            }
-            return CompletionOutcome(text: #"{"action":"answer_directly","toolName":null,"reasonCode":"direct_answer_ok"}"#, toolCall: nil)
+            return CompletionOutcome(text: #"{"toolName":null}"#, toolCall: nil)
         case .userFacingText:
             return CompletionOutcome(text: "Okay.", toolCall: nil)
         case .toolAware:

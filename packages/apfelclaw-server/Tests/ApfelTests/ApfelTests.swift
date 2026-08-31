@@ -156,7 +156,7 @@ func structuredTextRequestsUseGuidedJSONAndGreedySampling() throws {
         messages: [ChatMessage(role: "user", content: "hi")],
         tools: [],
         mode: .structuredText,
-        responseSchema: IntentRouter.classifierOutputSchema
+        responseSchema: IntentRouter.classifierOutputSchema(allowedToolNames: ["list_recent_mail", "list_calendar_events"])
     )
     let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
 
